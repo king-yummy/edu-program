@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <title>레슨플랜 생성</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link href="./css/style.css" rel="stylesheet" />
+  </head>
+  <body>
+    <nav class="nav">
+      <div class="container">
+        <div class="brand">LessonPlan</div>
+        <a href="./plan.html" class="active">플랜 생성</a>
+      </div>
+    </nav>
+
+    <main class="container space">
+      <section class="card">
+        <div class="card-h">기본 정보</div>
+        <div class="card-b grid">
+          <div>
+            <label>반</label
+            ><select id="selClass"></select>
+            <div id="classDays" class="muted"></div>
+          </div>
+          <div>
+            <label>학생</label
+            ><select id="selStudent"></select>
+          </div>
+          <div><label>시작일</label><input type="date" id="startDate" /></div>
+          <div>
+            <label>요일 커스텀(쉼표)</label
+            ><input id="customDays" placeholder="MON,WED,FRI" />
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-h">교재 선택</div>
+        <div class="card-b grid2">
+          <div>
+            <div class="muted mb">본교재</div>
+            <select id="selMain"></select>
+            <div id="mainUnits" class="list mt"></div>
+          </div>
+          <div>
+            <div class="muted mb">어휘교재</div>
+            <select id="selVocab"></select>
+            <div id="vocabUnits" class="list mt"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-h">옵션</div>
+        <div class="card-b row">
+          <div>
+            <label>VOCAB 배정</label>
+            <select id="vocabMode">
+              <option value="paired">매 수업일</option>
+              <option value="weekly_first">주 1회(첫 수업)</option>
+              <option value="manual_only">수동만</option>
+            </select>
+          </div>
+          <div>
+            <label>하루 본교재 최대</label>
+            <select id="maxMain">
+              <option>1</option>
+              <option>2</option>
+            </select>
+          </div>
+          <div class="row-right">
+            <button id="btnPreview" class="btn">미리보기</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-h">결과</div>
+        <div class="card-b">
+          <div id="result" class="muted">
+            옵션 선택 후 ‘미리보기’를 누르세요.
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script src="/js/plan.js" defer></script>
+  </body>
+</html>
