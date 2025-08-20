@@ -2,159 +2,210 @@
 const $ = (q) => document.querySelector(q);
 const api = (p, opt) => fetch(p, opt).then((r) => r.json());
 
-async function loadBase() {
-  // 반 목록
-  const classes = await api("/api/class");
-  if (!classes?.length) {
-    $("#selClass").innerHTML = `<option value="">반 없음</option>`;
-  } else {
-    $("#selClass").innerHTML = classes
-      .map(
-        (c) => `<option value="${c.id}">${c.name} (${c.schedule_days})</option>`
-      )
-      .join("");
-  }
+// 상태
+const state = {
+  classes: [],
+  materials: [],
+  lanes: { main1: [], main2: [], vocab: [] },
+  exceptions: {}, // { 'YYYY-MM-DD': { type:'vacation|sick|other', reason?:string } }
+};
+
+document.addEventListener("DOMContentLoaded", boot);
+
+async function boot() {
+  // 반/학생
+  state.classes = await api("/api/class");
+  $("#selClass").innerHTML = state.classes
+    .map(
+      (c) => `<option value="${c.id}">${c.name} (${c.schedule_days})</option>`
+    )
+    .join("");
   $("#selClass").onchange = onClassChange;
   await onClassChange();
 
-  // 교재 마스터
+  // 교재
   const mats = await api("/api/material");
-  const mains = mats.filter(
-    (m) => String(m.type || "").toUpperCase() === "MAIN"
-  );
-  const vocabs = mats.filter(
-    (m) => String(m.type || "").toUpperCase() === "VOCAB"
-  );
-
-  $("#selMain").innerHTML =
-    `<option value="">본교재 선택</option>` +
-    mains
+  state.materials = mats;
+  const mains = mats.filter((m) => String(m.type).toUpperCase() === "MAIN");
+  const vocs = mats.filter((m) => String(m.type).toUpperCase() === "VOCAB");
+  const opt = (arr) =>
+    `<option value="">선택</option>` +
+    arr
       .map((m) => `<option value="${m.material_id}">${m.title}</option>`)
       .join("");
-  $("#selVocab").innerHTML =
-    `<option value="">어휘교재 선택</option>` +
-    vocabs
-      .map((m) => `<option value="${m.material_id}">${m.title}</option>`)
-      .join("");
+  $("#selMain1").innerHTML = opt(mains);
+  $("#selMain2").innerHTML = opt(mains);
+  $("#selVocab").innerHTML = opt(vocs);
 
-  $("#selMain").onchange = renderMainUnits;
-  $("#selVocab").onchange = renderVocabUnits;
+  $("#btnAddMain1").onclick = () => addToLane("main1", $("#selMain1").value);
+  $("#btnAddMain2").onclick = () => addToLane("main2", $("#selMain2").value);
+  $("#btnAddVocab").onclick = () => addToLane("vocab", $("#selVocab").value);
 
-  // 시작일 기본값 = 오늘
-  const today = new Date();
-  $("#startDate").value = today.toISOString().slice(0, 10);
-
-  // 미리보기 버튼
   $("#btnPreview").onclick = previewPlan;
+  $("#btnPrint").onclick = () => window.print();
+
+  // 날짜 기본값
+  const today = new Date().toISOString().slice(0, 10);
+  $("#startDate").value = today;
+  $("#endDate").value = today;
 }
 
 async function onClassChange() {
   const classId = $("#selClass").value;
-  // 반 기본 요일 노출
-  const classes = await api("/api/class");
-  const cls = classes.find((c) => String(c.id) === String(classId));
+  const cls = state.classes.find((c) => c.id === classId);
   $("#classDays").textContent = cls ? `기본 요일: ${cls.schedule_days}` : "";
-
-  // 해당 반의 학생
   const students = await api(
     `/api/student?classId=${encodeURIComponent(classId)}`
   );
-  $("#selStudent").innerHTML = students?.length
-    ? students
-        .map(
-          (s) =>
-            `<option value="${s.id}">${s.name} (${s.school} ${s.grade})</option>`
-        )
-        .join("")
-    : `<option value="">학생 없음</option>`;
-}
-
-async function renderMainUnits() {
-  const matId = $("#selMain").value;
-  if (!matId) {
-    $("#mainUnits").innerHTML = "";
-    return;
-  }
-  const rows = await api(
-    `/api/mainBook?materialId=${encodeURIComponent(matId)}`
-  );
-  $("#mainUnits").innerHTML = rows
+  $("#selStudent").innerHTML = students
     .map(
-      (u) => `
-    <label>
-      <input type="checkbox" value="${u.unit_code}">
-      <b>${u.unit_code}</b> <span class="muted">${u.title || ""}</span>
-      ${u.pages ? `<span class="pill">${u.pages}</span>` : ""}
-      ${u.wb ? `<span class="pill">WB:${u.wb}</span>` : ""}
-      ${u.dt_vocab ? `<span class="pill">단어:${u.dt_vocab}</span>` : ""}
-      ${u.key_sents ? `<span class="pill">문장:${u.key_sents}</span>` : ""}
-    </label>
-  `
+      (s) =>
+        `<option value="${s.id}">${s.name} (${s.school} ${s.grade})</option>`
     )
     .join("");
 }
 
-async function renderVocabUnits() {
-  const matId = $("#selVocab").value;
-  if (!matId) {
-    $("#vocabUnits").innerHTML = "";
+async function addToLane(lane, materialId) {
+  if (!materialId) return;
+  const exists = state.lanes[lane].some((x) => x.materialId === materialId);
+  if (exists) return alert("이미 추가된 교재입니다.");
+  const title =
+    (state.materials.find((m) => m.material_id === materialId) || {}).title ||
+    materialId;
+  const units =
+    lane === "vocab"
+      ? await api(`/api/vocaBook?materialId=${encodeURIComponent(materialId)}`)
+      : await api(`/api/mainBook?materialId=${encodeURIComponent(materialId)}`);
+  if (!units.length) return alert("해당 교재의 차시가 없습니다.");
+  state.lanes[lane].push({
+    materialId,
+    title,
+    units,
+    startUnitCode: units[0].unit_code,
+  });
+  renderLane(lane);
+}
+
+function removeFromLane(lane, materialId) {
+  state.lanes[lane] = state.lanes[lane].filter(
+    (x) => x.materialId !== materialId
+  );
+  renderLane(lane);
+}
+function move(lane, materialId, dir) {
+  const arr = state.lanes[lane];
+  const i = arr.findIndex((x) => x.materialId === materialId);
+  if (i < 0) return;
+  const j = i + dir;
+  if (j < 0 || j >= arr.length) return;
+  [arr[i], arr[j]] = [arr[j], arr[i]];
+  renderLane(lane);
+}
+
+function renderLane(lane) {
+  const box =
+    lane === "main1"
+      ? $("#laneMain1")
+      : lane === "main2"
+      ? $("#laneMain2")
+      : $("#laneVocab");
+  const arr = state.lanes[lane];
+  if (!arr.length) {
+    box.innerHTML = `<div class="small muted">책을 추가하세요.</div>`;
     return;
   }
-  const rows = await api(
-    `/api/vocaBook?materialId=${encodeURIComponent(matId)}`
-  );
-  $("#vocabUnits").innerHTML = rows
+  box.innerHTML = arr
     .map(
-      (u) => `
-    <label>
-      <input type="checkbox" value="${u.unit_code}">
-      <b>${u.unit_code}</b> <span class="pill">${u.vocab_range || ""}</span>
-    </label>
+      (b, i) => `
+    <div class="book-card">
+      <div class="book-head">
+        <div><b>${b.title}</b> <span class="small">(${
+        b.materialId
+      })</span></div>
+        <div class="no-print">
+          <button onclick="move('${lane}','${b.materialId}',-1)">▲</button>
+          <button onclick="move('${lane}','${b.materialId}', 1)">▼</button>
+          <button onclick="removeFromLane('${lane}','${
+        b.materialId
+      }')">삭제</button>
+        </div>
+      </div>
+      ${
+        i === 0
+          ? `
+        <div class="row mt">
+          <div style="flex:1">
+            <label class="small">시작 차시</label>
+            <select data-start="${lane}:${b.materialId}">
+              ${b.units
+                .map(
+                  (u) =>
+                    `<option value="${u.unit_code}" ${
+                      u.unit_code === b.startUnitCode ? "selected" : ""
+                    }>${u.unit_code} — ${
+                      u.lecture_range || u.title || ""
+                    }</option>`
+                )
+                .join("")}
+            </select>
+          </div>
+        </div>`
+          : `<div class="small muted mt">다음 책은 자동으로 첫 차시부터 시작</div>`
+      }
+    </div>
   `
     )
     .join("");
-}
 
-function picked(containerSelector) {
-  return [
-    ...document.querySelectorAll(
-      `${containerSelector} input[type=checkbox]:checked`
-    ),
-  ].map((i) => i.value);
+  box.querySelectorAll("select[data-start]").forEach((s) => {
+    s.onchange = (e) => {
+      const [ln, mid] = s.getAttribute("data-start").split(":");
+      const it = state.lanes[ln].find((x) => x.materialId === mid);
+      if (it) it.startUnitCode = e.target.value;
+    };
+  });
 }
+window.removeFromLane = removeFromLane;
+window.move = move;
 
-async function previewPlan() {
+function getDaysCSV() {
   const classId = $("#selClass").value;
-  const classes = await api("/api/class");
-  const cls = classes.find((c) => String(c.id) === String(classId));
-  const days = (
+  const cls = state.classes.find((c) => c.id === classId);
+  return (
     $("#customDays").value ||
     cls?.schedule_days ||
     "MON,WED,FRI"
   ).toUpperCase();
+}
 
+async function previewPlan() {
+  const studentName =
+    $("#selStudent option:checked")?.textContent?.split(" (")[0] || "";
   const startDate = $("#startDate").value;
-  const mainId = $("#selMain").value;
-  const mainCodes = picked("#mainUnits");
-  const vocabId = $("#selVocab").value;
-  const vocabCodes = picked("#vocabUnits");
-  const vocabMode = $("#vocabMode").value;
-  const maxMain = Number($("#maxMain").value || "1");
+  const endDate = $("#endDate").value;
+  if (!startDate || !endDate) return alert("시작/끝 날짜를 선택하세요.");
 
-  if (!startDate) return alert("시작일을 선택하세요.");
-  if (!mainId || mainCodes.length === 0)
-    return alert("본교재와 차시를 선택하세요.");
+  const lanes = {};
+  for (const ln of ["main1", "main2", "vocab"]) {
+    lanes[ln] = state.lanes[ln].map((b, idx) => ({
+      materialId: b.materialId,
+      ...(idx === 0 ? { startUnitCode: b.startUnitCode } : {}),
+    }));
+  }
+
+  const userSkips = Object.entries(state.exceptions).map(([date, v]) => ({
+    date,
+    type: v.type,
+    reason: v.reason || "",
+  }));
 
   const body = {
-    studentId: $("#selStudent").value,
+    studentName,
     startDate,
-    days,
-    main: { materialId: mainId, unitCodes: mainCodes },
-    vocabs:
-      vocabId && vocabCodes.length
-        ? [{ materialId: vocabId, unitCodes: vocabCodes }]
-        : [],
-    options: { maxMainPerDay: maxMain, vocabMode },
+    endDate,
+    days: getDaysCSV(),
+    lanes,
+    userSkips, // ⬅️ 추가
   };
 
   const res = await api("/api/plan", {
@@ -162,42 +213,127 @@ async function previewPlan() {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-
   if (!res.ok) {
     $("#result").textContent = res.error || "생성 실패";
     return;
   }
-
-  const rows = res.items || [];
-  if (!rows.length) {
-    $("#result").textContent = "생성된 항목이 없습니다.";
-    return;
-  }
-
-  const headers = [
-    "date",
-    "weekday",
-    "material_id",
-    "unit_code",
-    "pages",
-    "wb",
-    "dt_vocab",
-    "key_sents",
-    "vocab_session",
-    "vocab_range",
-    "source",
-  ];
-  const thead = `<thead><tr>${headers
-    .map((h) => `<th>${h}</th>`)
-    .join("")}</tr></thead>`;
-  const tbody = `<tbody>${rows
-    .map(
-      (r) => `<tr>${headers.map((h) => `<td>${r[h] || ""}</td>`).join("")}</tr>`
-    )
-    .join("")}</tbody>`;
-  $(
-    "#result"
-  ).innerHTML = `<div class="muted mb">총 ${rows.length}행</div><table class="table">${thead}${tbody}</table>`;
+  renderPrintable(res.items, { studentName, startDate, endDate, lanes });
 }
 
-document.addEventListener("DOMContentLoaded", loadBase);
+function renderPrintable(items, ctx) {
+  const titleOf = (id) =>
+    (state.materials.find((m) => m.material_id === id) || {}).title || id;
+  const dates = [...new Set(items.map((i) => i.date))].sort();
+
+  const laneIds = {
+    main1: [
+      ...new Set(
+        items.filter((i) => i.source === "main").map((i) => i.material_id)
+      ),
+    ], // 표시용
+    main2: [],
+    vocab: [],
+  };
+  // 테이블 컬럼 고정: 메인1, 메인2, 어휘
+  const thead = `
+    <thead><tr>
+      <th style="width:110px">날짜</th>
+      <th>메인1</th><th>메인2</th><th>어휘</th>
+    </tr></thead>`;
+
+  const rows = dates
+    .map((d) => {
+      const dayItems = items.filter((x) => x.date === d);
+      const skip = dayItems.find((x) => x.source === "skip");
+      const tag = `data-date="${d}" class="js-date" style="cursor:pointer; text-decoration:underline;"`;
+
+      if (skip) {
+        return `<tr>
+        <td ${tag}><b>${d}</b></td>
+        <td colspan="3" style="color:#64748b;background:#f8fafc;">${skip.reason}</td>
+      </tr>`;
+      }
+      const m1 = dayItems.find(
+        (x) =>
+          x.source === "main" &&
+          x.material_id &&
+          ctx.lanes.main1.some((b) => b.materialId === x.material_id)
+      );
+      const m2 = dayItems.find(
+        (x) =>
+          x.source === "main" &&
+          x.material_id &&
+          ctx.lanes.main2.some((b) => b.materialId === x.material_id)
+      );
+      const vs = dayItems.filter((x) => x.source === "vocab");
+      return `<tr>
+      <td ${tag}><b>${d}</b></td>
+      <td>${m1 ? formatMain(m1) : ""}</td>
+      <td>${m2 ? formatMain(m2) : ""}</td>
+      <td>${vs.map(formatVocab).join("<br>")}</td>
+    </tr>`;
+    })
+    .join("");
+
+  // ... 헤더 + 테이블 출력 ...
+  const header = `
+  <div style="margin-bottom:12px;">
+    <b>${ctx.studentName || "학생"}</b> / 
+    ${ctx.startDate} ~ ${ctx.endDate}
+  </div>`;
+
+  $("#result").innerHTML =
+    header + `<table class="table">${thead}<tbody>${rows}</tbody></table>`;
+
+  // ⬇️ 날짜 클릭 이벤트로 모달 열기
+  document.querySelectorAll(".js-date").forEach((el) => {
+    el.onclick = () => openSkipModal(el.getAttribute("data-date"));
+  });
+}
+
+function formatMain(it) {
+  const line1 = it.lecture_range || `${it.material_id} ${it.unit_code}`;
+  const line2 = [
+    it.pages && `p.${it.pages}`,
+    it.wb && `WB ${it.wb}`,
+    it.dt_vocab && `단어 ${it.dt_vocab}`,
+    it.key_sents && `문장 ${it.key_sents}`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return [line1, line2].filter(Boolean).join("<br>");
+}
+function formatVocab(it) {
+  return [it.lecture_range, it.vocab_range].filter(Boolean).join(" · ");
+}
+
+function openSkipModal(date) {
+  const modal = $("#skipModal");
+  $("#skipDateLabel").textContent = date;
+  $("#skipReason").value = state.exceptions[date]?.reason || "";
+  modal.dataset.date = date;
+  modal.style.display = "flex";
+}
+function closeSkipModal() {
+  $("#skipModal").style.display = "none";
+}
+
+["vacation", "sick", "other"].forEach((t) => {
+  document.querySelector(`#skipModal [data-sel='${t}']`).onclick = () => {
+    const date = $("#skipModal").dataset.date;
+    const reason = $("#skipReason").value.trim();
+    state.exceptions[date] = { type: t, reason };
+  };
+});
+
+$("#btnSkipSave").onclick = () => {
+  closeSkipModal();
+  previewPlan();
+};
+$("#btnSkipDelete").onclick = () => {
+  const date = $("#skipModal").dataset.date;
+  delete state.exceptions[date];
+  closeSkipModal();
+  previewPlan();
+};
+$("#btnSkipClose").onclick = closeSkipModal;
