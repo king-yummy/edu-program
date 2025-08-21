@@ -1,4 +1,4 @@
-// api/_diag.js
+// api/diag.js
 import { google } from "googleapis";
 
 export default async function handler(req, res) {
@@ -11,6 +11,7 @@ export default async function handler(req, res) {
     STUDENTS_RANGE: process.env.STUDENTS_RANGE || "student!A:Z",
     MATERIALS_RANGE: process.env.MATERIALS_RANGE || "material!A:Z",
   };
+
   const out = { ok: false, env, checks: {}, errors: {} };
 
   try {
@@ -29,30 +30,27 @@ export default async function handler(req, res) {
     const sheets = google.sheets({ version: "v4", auth: client });
     const id = process.env.SHEET_ID;
 
-    const ping = async (range) => {
+    async function ping(range) {
       try {
         const r = await sheets.spreadsheets.values.get({
           spreadsheetId: id,
           range,
         });
         const values = r.data.values || [];
-        return {
-          ok: true,
-          rows: values.length,
-          header: values[0] || [],
-        };
+        return { ok: true, rows: values.length, header: values[0] || [] };
       } catch (e) {
         return { ok: false, error: e.message };
       }
-    };
+    }
 
     out.checks.class = await ping(env.CLASSES_RANGE);
     out.checks.student = await ping(env.STUDENTS_RANGE);
     out.checks.material = await ping(env.MATERIALS_RANGE);
-    out.ok =
-      out.checks.class.ok || out.checks.student.ok || out.checks.material.ok
-        ? true
-        : false;
+    out.ok = !!(
+      out.checks.class.ok ||
+      out.checks.student.ok ||
+      out.checks.material.ok
+    );
 
     return res.status(200).json(out);
   } catch (e) {

@@ -1,10 +1,8 @@
-// api/class.js
 import { readSheetObjects } from "../lib/sheets.js";
-
 export default async function handler(req, res) {
   if (req.method !== "GET") {
     res.setHeader("Allow", "GET");
-    return res.status(405).json({ ok: false, error: "Method Not Allowed" });
+    return res.status(405).json({ ok: false });
   }
   const RANGE = process.env.CLASSES_RANGE || "class!A:Z";
   try {
@@ -13,7 +11,7 @@ export default async function handler(req, res) {
       id: String(r.id || `C${i + 1}`),
       name: String(r.name || `Class ${i + 1}`),
       schedule_days: String(r.schedule_days || "MON,WED,FRI").toUpperCase(),
-      test: String(r.test || ""), // 필요시 사용
+      test: String(r.test || ""),
     }));
     return res.status(200).json(out);
   } catch {
