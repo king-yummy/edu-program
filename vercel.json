@@ -1,7 +1,7 @@
 {
   "version": 2,
   "rewrites": [
-    { "source": "/", "destination": "/web/plan.html" },
+    { "source": "/", "destination": "/plan.html" },
     { "source": "/js/(.*)", "destination": "/web/js/$1" },
     { "source": "/css/(.*)", "destination": "/web/css/$1" },
     { "source": "/img/(.*)", "destination": "/web/img/$1" },
