@@ -1,0 +1,21 @@
+{
+  "version": 2,
+  "rewrites": [
+    { "source": "/", "destination": "/web/plan.html" },
+    { "source": "/js/(.*)", "destination": "/web/js/$1" },
+    { "source": "/css/(.*)", "destination": "/web/css/$1" },
+    { "source": "/img/(.*)", "destination": "/web/img/$1" },
+    { "source": "/", "destination": "/web/plan.html" }
+  ],
+  "headers": [
+    {
+      "source": "/web/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    }
+  ]
+}

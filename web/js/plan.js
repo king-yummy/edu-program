@@ -7,9 +7,9 @@ const state = {
   classes: [],
   materials: [],
   lanes: { main1: [], main2: [], vocab: [] },
-  exceptions: {}, // { 'YYYY-MM-DD': { type:'vacation|sick|other', reason?:string } }
+  exceptions: {},
+  classTestName: "",
 };
-
 document.addEventListener("DOMContentLoaded", boot);
 
 async function boot() {
@@ -24,7 +24,7 @@ async function boot() {
   await onClassChange();
 
   // 교재
-  const mats = await api("/api/material");
+  const mats = await api("/api/materials");
   state.materials = mats;
   const mains = mats.filter((m) => String(m.type).toUpperCase() === "MAIN");
   const vocs = mats.filter((m) => String(m.type).toUpperCase() === "VOCAB");
@@ -54,6 +54,8 @@ async function onClassChange() {
   const classId = $("#selClass").value;
   const cls = state.classes.find((c) => c.id === classId);
   $("#classDays").textContent = cls ? `기본 요일: ${cls.schedule_days}` : "";
+  state.classTestName = cls?.test || "";
+
   const students = await api(
     `/api/student?classId=${encodeURIComponent(classId)}`
   );
@@ -205,7 +207,8 @@ async function previewPlan() {
     endDate,
     days: getDaysCSV(),
     lanes,
-    userSkips, // ⬅️ 추가
+    userSkips,
+    testName: state.classTestName, // ✅ 추가
   };
 
   const res = await api("/api/plan", {
@@ -253,6 +256,7 @@ function renderPrintable(items, ctx) {
         <td colspan="3" style="color:#64748b;background:#f8fafc;">${skip.reason}</td>
       </tr>`;
       }
+
       const m1 = dayItems.find(
         (x) =>
           x.source === "main" &&
