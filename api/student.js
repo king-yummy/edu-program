@@ -1,4 +1,4 @@
-// api/student.js  (ESM)
+// api/student.js
 import { readSheetObjects } from "../lib/sheets.js";
 
 export default async function handler(req, res) {
@@ -8,67 +8,36 @@ export default async function handler(req, res) {
   }
 
   const { classId } = req.query || {};
-  if (!classId)
-    return res.status(400).json({ ok: false, error: "classId required" });
 
-  const range = process.env.CLASSES_RANGE || "Classes!A:Z";
-  try {
-    const rows = await readSheetObjects(range);
-
-    // 시트 컬럼 유연 매핑: id/name/students
-    const norm = rows.map((r, i) => ({
-      id: String(r.id ?? r.ID ?? r.classId ?? r.ClassId ?? `C${i + 1}`),
-      name: String(r.name ?? r.class ?? r.Class ?? `Class ${i + 1}`),
-      studentsStr: String(r.students ?? r.Students ?? ""),
-      raw: r,
-    }));
-
-    // id 또는 name으로 매칭
-    const target =
-      norm.find((x) => x.id === String(classId)) ||
-      norm.find((x) => x.name === String(classId));
-
-    if (!target) {
-      // 못 찾으면 비어있는 리스트로 200 반환(프런트 에러 방지)
-      return res
-        .status(200)
-        .json({
-          ok: true,
-          classId: String(classId),
-          className: "",
-          students: [],
-        });
-    }
-
-    // 학생 리스트 파싱: "a,b,c" 또는 줄바꿈 등
-    let students = [];
-    if (target.studentsStr) {
-      students = target.studentsStr
-        .split(/[,;\n]/)
-        .map((s) => s.trim())
-        .filter(Boolean);
-    } else {
-      // student1, student2 ... 같은 열이 있는 경우도 지원
-      students = Object.entries(target.raw)
-        .filter(([k, v]) => /^student/i.test(k) && String(v).trim())
-        .map(([, v]) => String(v).trim());
-    }
-
-    return res.status(200).json({
-      ok: true,
-      classId: target.id,
-      className: target.name,
-      students,
-    });
-  } catch (e) {
-    // 초기 세팅 단계에선 에러 대신 빈 결과(404 JSON 파싱 에러 방지)
+  // 선택 안 했거나 placeholder(-1)면 그냥 빈 리스트로 200
+  if (!classId || String(classId) === "-1") {
     return res
       .status(200)
-      .json({
-        ok: true,
-        classId: String(classId),
-        className: "",
-        students: [],
-      });
+      .json({ ok: true, classId: String(classId || ""), students: [] });
+  }
+
+  try {
+    const RANGE = process.env.STUDENTS_RANGE || "student!A:Z";
+    const rows = await readSheetObjects(RANGE);
+
+    // 시트 컬럼: id | class_id | name | school | grade | active
+    const students = rows
+      .filter((r) => String(r.class_id).trim() === String(classId).trim())
+      .filter((r) => String(r.active ?? "TRUE").toUpperCase() !== "FALSE")
+      .map((r) => ({
+        id: String(r.id || ""),
+        name: String(r.name || ""),
+        school: String(r.school || ""),
+        grade: Number(r.grade || 0),
+      }));
+
+    return res
+      .status(200)
+      .json({ ok: true, classId: String(classId), students });
+  } catch (e) {
+    // 에러여도 200 + 빈 배열(프런트가 404 HTML을 JSON으로 파싱하려다 터지는 걸 방지)
+    return res
+      .status(200)
+      .json({ ok: true, classId: String(classId), students: [] });
   }
 }

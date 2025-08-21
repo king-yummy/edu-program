@@ -2,24 +2,21 @@
 import { readSheetObjects } from "../lib/sheets.js";
 
 export default async function handler(req, res) {
-  if (req.method !== "GET")
+  if (req.method !== "GET") {
+    res.setHeader("Allow", "GET");
     return res.status(405).json({ ok: false, error: "Method Not Allowed" });
-
-  const range = process.env.CLASSES_RANGE || "Classes!A:Z";
+  }
+  const RANGE = process.env.CLASSES_RANGE || "class!A:Z";
   try {
-    const rows = await readSheetObjects(range);
-    // 컬럼 표준화 예시: { id, name, students, level }
+    const rows = await readSheetObjects(RANGE);
     const out = rows.map((r, i) => ({
-      id: r.id || r.ID || `C${i + 1}`,
-      name: r.name || r.class || r.Class || `Class ${i + 1}`,
-      students: (r.students || r.Students || "")
-        .split(/[,\n]/)
-        .map((s) => s.trim())
-        .filter(Boolean),
-      level: r.level || r.Level || "",
+      id: String(r.id || `C${i + 1}`),
+      name: String(r.name || `Class ${i + 1}`),
+      schedule_days: String(r.schedule_days || "MON,WED,FRI").toUpperCase(),
+      test: String(r.test || ""), // 필요시 사용
     }));
-    res.status(200).json(out);
-  } catch (e) {
-    res.status(200).json([]); // 시트 미설정이어도 404 대신 빈 배열
+    return res.status(200).json(out);
+  } catch {
+    return res.status(200).json([]);
   }
 }

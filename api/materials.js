@@ -1,31 +1,20 @@
-// api/materials.js
+// api/materials.js (핵심 필드 보장)
 import { readSheetObjects } from "../lib/sheets.js";
-
 export default async function handler(req, res) {
   if (req.method !== "GET") {
     res.setHeader("Allow", "GET");
-    return res.status(405).json({ ok: false, error: "Method Not Allowed" });
+    return res.status(405).json({ ok: false });
   }
-
-  const range = process.env.MATERIALS_RANGE || "Materials!A:Z";
-
+  const range = process.env.MATERIALS_RANGE || "material!A:Z"; // 탭명 맞춤
   try {
     const rows = await readSheetObjects(range);
-    // 표준화: { materialId, title, unit, key_sents }
     const out = rows.map((r, i) => ({
-      materialId:
-        r.materialId ?? r.MaterialId ?? r.ID ?? r.id ?? `MAT-${i + 1}`,
-      title: r.title ?? r.Title ?? r.name ?? "",
-      unit: r.unit ?? r.Unit ?? "",
-      key_sents: r.key_sents ?? r.KeySents ?? "",
+      material_id: String(r.material_id ?? r.id ?? `MAT-${i + 1}`),
+      type: String(r.type || "MAIN").toUpperCase(), // MAIN/VOCAB
+      title: String(r.title ?? r.name ?? ""),
     }));
-
-    // (선택) 캐시 힌트
-    // res.setHeader("Cache-Control", "s-maxage=60, stale-while-revalidate=300");
-
     return res.status(200).json(out);
-  } catch (e) {
-    // 초기 세팅 단계에선 404/500 대신 빈 배열 반환해도 OK
+  } catch {
     return res.status(200).json([]);
   }
 }

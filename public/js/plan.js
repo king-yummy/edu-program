@@ -66,9 +66,12 @@ async function onClassChange() {
   $("#classDays").textContent = cls ? `기본 요일: ${cls.schedule_days}` : "";
   state.classTestName = cls?.test || "";
 
-  const students = await api(
-    `/api/student?classId=${encodeURIComponent(classId)}`
-  );
+  if (!classId || classId === "-1") {
+    $("#selStudent").innerHTML = "";
+    return;
+  }
+  const res = await api(`/api/student?classId=${encodeURIComponent(classId)}`);
+  const students = Array.isArray(res) ? res : res?.students || [];
   $("#selStudent").innerHTML = students
     .map(
       (s) =>
