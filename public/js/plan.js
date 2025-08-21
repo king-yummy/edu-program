@@ -1,4 +1,6 @@
-// /web/js/plan.js
+// /public/js/plan.js  — 전체 교체본
+
+// -------- 공통 유틸 --------
 const $ = (q) => document.querySelector(q);
 const api = async (path, opt) => {
   const res = await fetch(path, opt);
@@ -6,24 +8,28 @@ const api = async (path, opt) => {
   try {
     return JSON.parse(txt);
   } catch {
-    // HTML/텍스트가 오면 에러로 던지되 앞부분만 출력
     throw new Error(
       `API ${path} -> ${res.status} ${res.statusText}\n${txt.slice(0, 160)}`
     );
   }
 };
-// 상태
+
+// -------- 전역 상태 --------
 const state = {
   classes: [],
   materials: [],
   lanes: { main1: [], main2: [], vocab: [] },
   exceptions: {},
   classTestName: "",
+  selectedClassId: "",
+  tests: [],
 };
+
+// -------- 부트스트랩 --------
 document.addEventListener("DOMContentLoaded", boot);
 
 async function boot() {
-  // 반/학생
+  // 반 목록
   state.classes = await api("/api/class");
   $("#selClass").innerHTML = state.classes
     .map(
@@ -33,7 +39,7 @@ async function boot() {
   $("#selClass").onchange = onClassChange;
   await onClassChange();
 
-  // 교재
+  // 교재 목록
   const mats = await api("/api/materials");
   state.materials = mats;
   const mains = mats.filter((m) => String(m.type).toUpperCase() === "MAIN");
@@ -47,10 +53,10 @@ async function boot() {
   $("#selMain2").innerHTML = opt(mains);
   $("#selVocab").innerHTML = opt(vocs);
 
+  // 버튼
   $("#btnAddMain1").onclick = () => addToLane("main1", $("#selMain1").value);
   $("#btnAddMain2").onclick = () => addToLane("main2", $("#selMain2").value);
   $("#btnAddVocab").onclick = () => addToLane("vocab", $("#selVocab").value);
-
   $("#btnPreview").onclick = previewPlan;
   $("#btnPrint").onclick = () => window.print();
 
@@ -58,18 +64,35 @@ async function boot() {
   const today = new Date().toISOString().slice(0, 10);
   $("#startDate").value = today;
   $("#endDate").value = today;
+
+  // 시험 UI 초기화
+  const now = new Date();
+  const mm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
+    2,
+    "0"
+  )}`;
+  const monthEl = $("#testMonth");
+  if (monthEl) monthEl.value = mm;
+  $("#btnTestReload")?.addEventListener("click", reloadTests);
+  $("#btnTestAdd")?.addEventListener("click", addTest);
 }
 
+// -------- 반 선택 시 처리(학생+시험) --------
 async function onClassChange() {
   const classId = $("#selClass").value;
+  state.selectedClassId = classId;
+
   const cls = state.classes.find((c) => c.id === classId);
   $("#classDays").textContent = cls ? `기본 요일: ${cls.schedule_days}` : "";
   state.classTestName = cls?.test || "";
 
-  if (!classId || classId === "-1") {
+  if (!classId) {
     $("#selStudent").innerHTML = "";
+    $("#testList").innerHTML = "";
     return;
   }
+
+  // 학생 로드
   const res = await api(`/api/student?classId=${encodeURIComponent(classId)}`);
   const students = Array.isArray(res) ? res : res?.students || [];
   $("#selStudent").innerHTML = students
@@ -78,20 +101,30 @@ async function onClassChange() {
         `<option value="${s.id}">${s.name} (${s.school} ${s.grade})</option>`
     )
     .join("");
+
+  // 시험 로드
+  await reloadTests();
 }
 
+// -------- 교재 Lane 관리 --------
 async function addToLane(lane, materialId) {
   if (!materialId) return;
   const exists = state.lanes[lane].some((x) => x.materialId === materialId);
   if (exists) return alert("이미 추가된 교재입니다.");
+
   const title =
     (state.materials.find((m) => m.material_id === materialId) || {}).title ||
     materialId;
+
+  // 각 교재의 유닛(차시) 불러오기 — 서버에 /api/mainBook, /api/vocaBook 라우트가 있어야 함
   const units =
     lane === "vocab"
       ? await api(`/api/vocaBook?materialId=${encodeURIComponent(materialId)}`)
       : await api(`/api/mainBook?materialId=${encodeURIComponent(materialId)}`);
-  if (!units.length) return alert("해당 교재의 차시가 없습니다.");
+
+  if (!Array.isArray(units) || !units.length)
+    return alert("해당 교재의 차시가 없습니다.");
+
   state.lanes[lane].push({
     materialId,
     title,
@@ -107,6 +140,7 @@ function removeFromLane(lane, materialId) {
   );
   renderLane(lane);
 }
+
 function move(lane, materialId, dir) {
   const arr = state.lanes[lane];
   const i = arr.findIndex((x) => x.materialId === materialId);
@@ -124,11 +158,13 @@ function renderLane(lane) {
       : lane === "main2"
       ? $("#laneMain2")
       : $("#laneVocab");
+
   const arr = state.lanes[lane];
   if (!arr.length) {
     box.innerHTML = `<div class="small muted">책을 추가하세요.</div>`;
     return;
   }
+
   box.innerHTML = arr
     .map(
       (b, i) => `
@@ -157,9 +193,9 @@ function renderLane(lane) {
                   (u) =>
                     `<option value="${u.unit_code}" ${
                       u.unit_code === b.startUnitCode ? "selected" : ""
-                    }>${u.unit_code} — ${
-                      u.lecture_range || u.title || ""
-                    }</option>`
+                    }>
+                  ${u.unit_code} — ${u.lecture_range || u.title || ""}
+                </option>`
                 )
                 .join("")}
             </select>
@@ -180,9 +216,12 @@ function renderLane(lane) {
     };
   });
 }
+
+// 전역에서 버튼이 접근할 수 있게 노출
 window.removeFromLane = removeFromLane;
 window.move = move;
 
+// -------- 플랜 생성 --------
 function getDaysCSV() {
   const classId = $("#selClass").value;
   const cls = state.classes.find((c) => c.id === classId);
@@ -215,13 +254,14 @@ async function previewPlan() {
   }));
 
   const body = {
+    classId: state.selectedClassId,
     studentName,
     startDate,
     endDate,
     days: getDaysCSV(),
     lanes,
     userSkips,
-    testName: state.classTestName, // ✅ 추가
+    testName: state.classTestName,
   };
 
   const res = await api("/api/plan", {
@@ -229,10 +269,12 @@ async function previewPlan() {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+
   if (!res.ok) {
     $("#result").textContent = res.error || "생성 실패";
     return;
   }
+
   renderPrintable(res.items, { studentName, startDate, endDate, lanes });
 }
 
@@ -241,16 +283,6 @@ function renderPrintable(items, ctx) {
     (state.materials.find((m) => m.material_id === id) || {}).title || id;
   const dates = [...new Set(items.map((i) => i.date))].sort();
 
-  const laneIds = {
-    main1: [
-      ...new Set(
-        items.filter((i) => i.source === "main").map((i) => i.material_id)
-      ),
-    ], // 표시용
-    main2: [],
-    vocab: [],
-  };
-  // 테이블 컬럼 고정: 메인1, 메인2, 어휘
   const thead = `
     <thead><tr>
       <th style="width:110px">날짜</th>
@@ -283,6 +315,7 @@ function renderPrintable(items, ctx) {
           ctx.lanes.main2.some((b) => b.materialId === x.material_id)
       );
       const vs = dayItems.filter((x) => x.source === "vocab");
+
       return `<tr>
       <td ${tag}><b>${d}</b></td>
       <td>${m1 ? formatMain(m1) : ""}</td>
@@ -292,17 +325,15 @@ function renderPrintable(items, ctx) {
     })
     .join("");
 
-  // ... 헤더 + 테이블 출력 ...
   const header = `
-  <div style="margin-bottom:12px;">
-    <b>${ctx.studentName || "학생"}</b> / 
-    ${ctx.startDate} ~ ${ctx.endDate}
-  </div>`;
+    <div style="margin-bottom:12px;">
+      <b>${ctx.studentName || "학생"}</b> /
+      ${ctx.startDate} ~ ${ctx.endDate}
+    </div>`;
 
   $("#result").innerHTML =
     header + `<table class="table">${thead}<tbody>${rows}</tbody></table>`;
 
-  // ⬇️ 날짜 클릭 이벤트로 모달 열기
   document.querySelectorAll(".js-date").forEach((el) => {
     el.onclick = () => openSkipModal(el.getAttribute("data-date"));
   });
@@ -324,6 +355,7 @@ function formatVocab(it) {
   return [it.lecture_range, it.vocab_range].filter(Boolean).join(" · ");
 }
 
+// -------- 스킵(예외) 모달 --------
 function openSkipModal(date) {
   const modal = $("#skipModal");
   $("#skipDateLabel").textContent = date;
@@ -334,101 +366,36 @@ function openSkipModal(date) {
 function closeSkipModal() {
   $("#skipModal").style.display = "none";
 }
-
 ["vacation", "sick", "other"].forEach((t) => {
-  document.querySelector(`#skipModal [data-sel='${t}']`).onclick = () => {
-    const date = $("#skipModal").dataset.date;
-    const reason = $("#skipReason").value.trim();
-    state.exceptions[date] = { type: t, reason };
-  };
+  const btn = document.querySelector(`#skipModal [data-sel='${t}']`);
+  if (btn)
+    btn.onclick = () => {
+      const date = $("#skipModal").dataset.date;
+      const reason = $("#skipReason").value.trim();
+      state.exceptions[date] = { type: t, reason };
+    };
 });
-
-$("#btnSkipSave").onclick = () => {
+$("#btnSkipSave")?.addEventListener("click", () => {
   closeSkipModal();
   previewPlan();
-};
-$("#btnSkipDelete").onclick = () => {
+});
+$("#btnSkipDelete")?.addEventListener("click", () => {
   const date = $("#skipModal").dataset.date;
   delete state.exceptions[date];
   closeSkipModal();
   previewPlan();
-};
-$("#btnSkipClose").onclick = closeSkipModal;
+});
+$("#btnSkipClose")?.addEventListener("click", closeSkipModal);
 
-// ===== 반 관리 상태 =====
-if (!window.state) window.state = {};
-state.classes = state.classes || [];
-state.selectedClassId = state.selectedClassId || "";
-state.tests = state.tests || [];
-state.testMonth = state.testMonth || "";
-
-// 유틸
-const $ = (q) => document.querySelector(q);
-const api = async (p, opt) => {
-  const r = await fetch(p, opt);
-  const t = await r.text();
-  try {
-    return JSON.parse(t);
-  } catch {
-    throw new Error(
-      `API ${p} -> ${r.status} ${r.statusText}\n${t.slice(0, 160)}`
-    );
-  }
-};
-const yyyymm = (d) => String(d).slice(0, 7);
-
-// 부트시 반/학생/교재 초기화
-document.addEventListener("DOMContentLoaded", boot2);
-async function boot2() {
-  // 반 목록
-  const classes = await api("/api/class");
-  state.classes = classes;
-  $("#selClass").innerHTML =
-    `<option value="-1">반 선택</option>` +
-    classes.map((c) => `<option value="${c.id}">${c.name}</option>`).join("");
-
-  // 이벤트 바인딩
-  $("#selClass").addEventListener("change", onClassChange);
-  $("#btnTestReload").addEventListener("click", reloadTests);
-  $("#btnTestAdd").addEventListener("click", addTest);
-
-  // 기본 월 = 오늘 기준
-  const now = new Date();
-  const mm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
-    2,
-    "0"
-  )}`;
-  $("#testMonth").value = mm;
-}
-
-// 반 선택 시 학생/시험 불러오기
-async function onClassChange() {
-  const classId = $("#selClass").value;
-  state.selectedClassId = classId;
-  // 학생
-  if (classId && classId !== "-1") {
-    const r = await api(`/api/student?classId=${encodeURIComponent(classId)}`);
-    const students = Array.isArray(r) ? r : r.students || [];
-    $("#selStudent").innerHTML = students
-      .map(
-        (s) =>
-          `<option value="${s.id}">${s.name} (${s.school} ${s.grade})</option>`
-      )
-      .join("");
-  } else {
-    $("#selStudent").innerHTML = "";
-  }
-  // 시험
-  await reloadTests();
-}
-
+// -------- 시험 CRUD --------
 async function reloadTests() {
   const classId = state.selectedClassId;
-  if (!classId || classId === "-1") {
-    $("#testList").innerHTML = "";
+  const el = $("#testList");
+  if (!classId) {
+    if (el) el.innerHTML = "";
     return;
   }
-  const month = $("#testMonth").value || "";
+  const month = $("#testMonth")?.value || "";
   const r = await api(
     `/api/class-tests?classId=${encodeURIComponent(
       classId
@@ -440,6 +407,7 @@ async function reloadTests() {
 
 function renderTests() {
   const el = $("#testList");
+  if (!el) return;
   if (!state.tests.length) {
     el.innerHTML = `<div class="muted">등록된 시험이 없습니다.</div>`;
     return;
@@ -459,14 +427,15 @@ function renderTests() {
       <button class="btn btn-xs" style="background:#ef4444" onclick="deleteTest('${
         t.id
       }')">삭제</button>
-    </div>`
+    </div>
+  `
     )
     .join("");
 }
 
 async function addTest() {
   const classId = state.selectedClassId;
-  if (!classId || classId === "-1") return alert("반을 먼저 선택하세요.");
+  if (!classId) return alert("반을 먼저 선택하세요.");
   const date = $("#newTestDate").value;
   const title = $("#newTestTitle").value.trim();
   const materialId = $("#newTestMaterial").value.trim();
