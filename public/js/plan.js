@@ -1,7 +1,17 @@
 // /web/js/plan.js
 const $ = (q) => document.querySelector(q);
-const api = (p, opt) => fetch(p, opt).then((r) => r.json());
-
+const api = async (path, opt) => {
+  const res = await fetch(path, opt);
+  const txt = await res.text();
+  try {
+    return JSON.parse(txt);
+  } catch {
+    // HTML/텍스트가 오면 에러로 던지되 앞부분만 출력
+    throw new Error(
+      `API ${path} -> ${res.status} ${res.statusText}\n${txt.slice(0, 160)}`
+    );
+  }
+};
 // 상태
 const state = {
   classes: [],
