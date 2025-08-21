@@ -354,3 +354,161 @@ $("#btnSkipDelete").onclick = () => {
   previewPlan();
 };
 $("#btnSkipClose").onclick = closeSkipModal;
+
+// ===== 반 관리 상태 =====
+if (!window.state) window.state = {};
+state.classes = state.classes || [];
+state.selectedClassId = state.selectedClassId || "";
+state.tests = state.tests || [];
+state.testMonth = state.testMonth || "";
+
+// 유틸
+const $ = (q) => document.querySelector(q);
+const api = async (p, opt) => {
+  const r = await fetch(p, opt);
+  const t = await r.text();
+  try {
+    return JSON.parse(t);
+  } catch {
+    throw new Error(
+      `API ${p} -> ${r.status} ${r.statusText}\n${t.slice(0, 160)}`
+    );
+  }
+};
+const yyyymm = (d) => String(d).slice(0, 7);
+
+// 부트시 반/학생/교재 초기화
+document.addEventListener("DOMContentLoaded", boot2);
+async function boot2() {
+  // 반 목록
+  const classes = await api("/api/class");
+  state.classes = classes;
+  $("#selClass").innerHTML =
+    `<option value="-1">반 선택</option>` +
+    classes.map((c) => `<option value="${c.id}">${c.name}</option>`).join("");
+
+  // 이벤트 바인딩
+  $("#selClass").addEventListener("change", onClassChange);
+  $("#btnTestReload").addEventListener("click", reloadTests);
+  $("#btnTestAdd").addEventListener("click", addTest);
+
+  // 기본 월 = 오늘 기준
+  const now = new Date();
+  const mm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
+    2,
+    "0"
+  )}`;
+  $("#testMonth").value = mm;
+}
+
+// 반 선택 시 학생/시험 불러오기
+async function onClassChange() {
+  const classId = $("#selClass").value;
+  state.selectedClassId = classId;
+  // 학생
+  if (classId && classId !== "-1") {
+    const r = await api(`/api/student?classId=${encodeURIComponent(classId)}`);
+    const students = Array.isArray(r) ? r : r.students || [];
+    $("#selStudent").innerHTML = students
+      .map(
+        (s) =>
+          `<option value="${s.id}">${s.name} (${s.school} ${s.grade})</option>`
+      )
+      .join("");
+  } else {
+    $("#selStudent").innerHTML = "";
+  }
+  // 시험
+  await reloadTests();
+}
+
+async function reloadTests() {
+  const classId = state.selectedClassId;
+  if (!classId || classId === "-1") {
+    $("#testList").innerHTML = "";
+    return;
+  }
+  const month = $("#testMonth").value || "";
+  const r = await api(
+    `/api/class-tests?classId=${encodeURIComponent(
+      classId
+    )}&month=${encodeURIComponent(month)}`
+  );
+  state.tests = (r && r.items) || [];
+  renderTests();
+}
+
+function renderTests() {
+  const el = $("#testList");
+  if (!state.tests.length) {
+    el.innerHTML = `<div class="muted">등록된 시험이 없습니다.</div>`;
+    return;
+  }
+  el.innerHTML = state.tests
+    .map(
+      (t) => `
+    <div class="row" data-id="${t.id}" style="gap:8px">
+      <input type="date" value="${t.date}">
+      <input type="text" value="${t.title}">
+      <input type="text" value="${
+        t.materialId || ""
+      }" placeholder="materialId(선택)">
+      <button class="btn btn-xs" onclick="updateTest('${
+        t.id
+      }', this)">수정</button>
+      <button class="btn btn-xs" style="background:#ef4444" onclick="deleteTest('${
+        t.id
+      }')">삭제</button>
+    </div>`
+    )
+    .join("");
+}
+
+async function addTest() {
+  const classId = state.selectedClassId;
+  if (!classId || classId === "-1") return alert("반을 먼저 선택하세요.");
+  const date = $("#newTestDate").value;
+  const title = $("#newTestTitle").value.trim();
+  const materialId = $("#newTestMaterial").value.trim();
+  if (!date || !title) return alert("날짜와 시험명을 입력하세요.");
+
+  const r = await api(
+    `/api/class-tests?classId=${encodeURIComponent(classId)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ date, title, materialId }),
+    }
+  );
+  if (!r.ok) return alert(r.error || "저장 실패");
+  $("#newTestDate").value = "";
+  $("#newTestTitle").value = "";
+  $("#newTestMaterial").value = "";
+  await reloadTests();
+}
+
+async function updateTest(id, btn) {
+  const row = btn.closest(".row");
+  const [dateEl, titleEl, matEl] = row.querySelectorAll("input");
+  const patch = {
+    date: dateEl.value,
+    title: titleEl.value.trim(),
+    materialId: matEl.value.trim(),
+  };
+  const r = await api(`/api/test?id=${encodeURIComponent(id)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  if (!r.ok) return alert(r.error || "수정 실패");
+  await reloadTests();
+}
+
+async function deleteTest(id) {
+  if (!confirm("정말 삭제할까요?")) return;
+  const r = await api(`/api/test?id=${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+  if (!r.ok) return alert(r.error || "삭제 실패");
+  await reloadTests();
+}

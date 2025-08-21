@@ -46,6 +46,54 @@
     </nav>
 
     <main class="container space">
+      <!-- 반 관리 -->
+      <section class="card" style="margin-top: 16px">
+        <h2>반 관리</h2>
+
+        <div class="row">
+          <label>반 선택</label>
+          <select id="selClass" style="min-width: 200px"></select>
+        </div>
+
+        <div class="row">
+          <label>학생</label>
+          <select
+            id="selStudent"
+            multiple
+            size="6"
+            style="min-width: 260px"
+          ></select>
+        </div>
+
+        <div class="row">
+          <label>시험 월</label>
+          <input type="month" id="testMonth" />
+          <button id="btnTestReload" class="btn">불러오기</button>
+        </div>
+
+        <div class="row">
+          <label>시험 일정 (월 0~2회)</label>
+          <div id="testList"></div>
+          <div style="margin-top: 8px">
+            <input type="date" id="newTestDate" />
+            <input
+              type="text"
+              id="newTestTitle"
+              placeholder="시험명 (예: Monthly Test 1)"
+            />
+            <input
+              type="text"
+              id="newTestMaterial"
+              placeholder="materialId (선택)"
+            />
+            <button id="btnTestAdd" class="btn">추가</button>
+          </div>
+          <small style="color: var(--muted)"
+            >* 같은 달에 최대 2개까지 저장됩니다.</small
+          >
+        </div>
+      </section>
+
       <!-- 기본 정보 -->
       <section class="card">
         <div class="card-h">기본 정보</div>
