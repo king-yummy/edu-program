@@ -3,7 +3,7 @@
   "version": "2.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vercel dev",
+    "local": "vercel dev",
     "build": "echo 'No build step'",
     "start": "vercel dev"
   },
