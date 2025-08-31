@@ -1,8 +1,5 @@
 // /public/js/plan.js — 최종 수정본
 
-// 공통 유틸, 전역 상태, 부트스트랩 등 상단부는 이전과 동일합니다.
-// ...
-
 const $ = (q) => document.querySelector(q);
 const api = async (path, opt) => {
   const res = await fetch(path, opt);
@@ -348,19 +345,15 @@ function renderPrintable(items, ctx) {
           .map((t) => t.title)
           .join("<br>")}</td></tr>`;
 
+      // [핵심 수정] lane 꼬리표를 보고 정확한 항목을 찾음
       const m1 = dayItems.find(
-        (x) =>
-          x.source === "main" &&
-          ctx.lanes.main1.some((b) => b.materialId === x.material_id)
+        (x) => x.source === "main" && x.lane === "main1"
       );
       const m2 = dayItems.find(
-        (x) =>
-          x.source === "main" &&
-          ctx.lanes.main2.some((b) => b.materialId === x.material_id)
+        (x) => x.source === "main" && x.lane === "main2"
       );
       const v = dayItems.find((x) => x.source === "vocab");
 
-      // [핵심 수정] OT, '복귀' 렌더링 로직
       const renderMainLane = (mainItem) => {
         if (!mainItem) return `<td></td>`.repeat(5);
         const title =
