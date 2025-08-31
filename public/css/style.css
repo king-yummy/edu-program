@@ -165,3 +165,9 @@ button {
   background: #f8fafc;
   color: var(--muted);
 }
+
+.btn-xs {
+  width: auto;
+  padding: 4px 10px;
+  font-size: 12px;
+}

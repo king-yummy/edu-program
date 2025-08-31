@@ -204,7 +204,6 @@ function renderLane(lane) {
     return;
   }
 
-  // [변경] 모든 교재 카드에 시작/종료 차시 UI를 렌더링
   box.innerHTML = arr
     .map((b) => {
       const startIndex = b.units.findIndex(
@@ -222,7 +221,6 @@ function renderLane(lane) {
         )
         .join("");
 
-      // 종료 차시는 시작 차시 이후의 유닛만 선택 가능하도록 필터링
       const endOptions = b.units
         .slice(startIndex)
         .map(
@@ -240,9 +238,9 @@ function renderLane(lane) {
         <div class="book-head">
           <div><b>${b.title}</b> <span class="small">(${b.materialId})</span></div>
           <div class="no-print">
-            <button onclick="move('${lane}','${b.instanceId}',-1)">▲</button>
-            <button onclick="move('${lane}','${b.instanceId}', 1)">▼</button>
-            <button onclick="removeFromLane('${lane}','${b.instanceId}')">삭제</button>
+            <button class="btn-xs" onclick="move('${lane}','${b.instanceId}',-1)">▲</button>
+            <button class="btn-xs" onclick="move('${lane}','${b.instanceId}', 1)">▼</button>
+            <button class="btn-xs" style="background:#ef4444" onclick="removeFromLane('${lane}','${b.instanceId}')">삭제</button>
           </div>
         </div>
         <div class="row mt">
@@ -260,7 +258,6 @@ function renderLane(lane) {
     })
     .join("");
 
-  // [변경] 차시 변경 이벤트 핸들러
   box.querySelectorAll("select[data-id]").forEach((s) => {
     s.onchange = (e) => {
       const { type, lane, id } = s.dataset;
@@ -269,7 +266,6 @@ function renderLane(lane) {
 
       if (type === "start") {
         book.startUnitCode = e.target.value;
-        // 시작 차시가 종료 차시보다 뒤로 가면, 종료 차시를 시작 차시와 동일하게 설정
         const startIndex = book.units.findIndex(
           (u) => u.unit_code === book.startUnitCode
         );
@@ -279,7 +275,7 @@ function renderLane(lane) {
         if (startIndex > endIndex) {
           book.endUnitCode = book.startUnitCode;
         }
-        renderLane(lane); // 종료 차시 목록을 다시 렌더링하기 위해 호출
+        renderLane(lane);
       } else {
         book.endUnitCode = e.target.value;
       }
