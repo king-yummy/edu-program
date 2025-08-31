@@ -293,14 +293,56 @@ async function loadPlanForEditing(planId, studentId) {
     const plan = res.plans.find((p) => p.planId === planId);
     if (!plan) throw new Error("플랜을 찾을 수 없습니다.");
 
+    // --- [핵심 수정] 교재 상세 정보를 다시 불러와서 state.lanes를 재구성 ---
+    const lanesConfig = plan.context.lanes || {
+      main1: [],
+      main2: [],
+      vocab: [],
+    };
+    const reconstructedLanes = { main1: [], main2: [], vocab: [] };
+
+    for (const lane of ["main1", "main2", "vocab"]) {
+      for (const book of lanesConfig[lane]) {
+        const materialInfo = state.materials.find(
+          (m) => m.material_id === book.materialId
+        );
+        if (!materialInfo) continue;
+
+        const isVocab = lane === "vocab";
+        const units = await api(
+          isVocab
+            ? `/api/vocaBook?materialId=${encodeURIComponent(book.materialId)}`
+            : `/api/mainBook?materialId=${encodeURIComponent(book.materialId)}`
+        );
+
+        if (!Array.isArray(units) || units.length === 0) continue;
+
+        reconstructedLanes[lane].push({
+          instanceId: `inst_${Date.now()}_${Math.random()
+            .toString(36)
+            .slice(2, 7)}`,
+          materialId: book.materialId,
+          title: materialInfo.title,
+          units: units,
+          startUnitCode: book.startUnitCode,
+          endUnitCode: book.endUnitCode,
+        });
+      }
+    }
+    state.lanes = reconstructedLanes;
+    // --- 수정 끝 ---
+
+    // UI 채우기
     $("#startDate").value = plan.context.startDate;
     $("#endDate").value = plan.context.endDate;
     $("#customDays").value = plan.context.days;
-    state.lanes = plan.context.lanes || { main1: [], main2: [], vocab: [] }; // lanes가 없는 경우 대비
+
+    // 재구성된 lanes를 화면에 렌더링
     renderLane("main1");
     renderLane("main2");
     renderLane("vocab");
-    state.exceptions = plan.context.userSkips.reduce((acc, skip) => {
+
+    state.exceptions = (plan.context.userSkips || []).reduce((acc, skip) => {
       acc[skip.date] = { type: skip.type, reason: skip.reason };
       return acc;
     }, {});
