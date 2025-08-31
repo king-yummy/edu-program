@@ -340,6 +340,45 @@ async function previewPlan() {
 
 function renderPrintable(items, ctx) {
   const dates = [...new Set(items.map((i) => i.date))].sort();
+
+  // [추가] 1. 플랜에 사용된 메인 교재 ID 목록 추출
+  const usedMainMaterialIds = [
+    ...new Set(
+      items
+        .filter((it) => it.source === "main" && it.material_id)
+        .map((it) => it.material_id)
+    ),
+  ];
+
+  // [추가] 2. 교재 ID를 이용해 전체 정보 (title, lecture) 조회
+  const usedMaterials = usedMainMaterialIds
+    .map((id) => state.materials.find((m) => m.material_id === id))
+    .filter(Boolean); // 혹시 모를 null 값 제거
+
+  // [추가] 3. 교재 정보 헤더 HTML 생성
+  const materialsHeaderHtml = `
+    <div class="materials-header">
+      ${usedMaterials
+        .map(
+          (m) => `
+        <div class="material-item">
+          <div class="material-title">${m.title}</div>
+          <div class="material-lecture">${m.lecture || "인강 정보 없음"}</div>
+        </div>
+      `
+        )
+        .join("")}
+    </div>
+  `;
+
+  // 기존 학생 정보 헤더
+  const studentHeader = `
+    <div style="margin-bottom:12px;">
+      <b>${ctx.studentName}</b> /
+      ${ctx.startDate} ~ ${ctx.endDate}
+    </div>`;
+
+  // 기존 테이블 생성 로직
   const thead = `<thead><tr><th style="width:110px">날짜</th><th>메인1</th><th>메인2</th><th>어휘</th></tr></thead>`;
   const rows = dates
     .map((d) => {
@@ -373,13 +412,18 @@ function renderPrintable(items, ctx) {
         .join("<br>")}</td></tr>`;
     })
     .join("");
-  const header = `<div style="margin-bottom:12px;"><b>${ctx.studentName}</b> / ${ctx.startDate} ~ ${ctx.endDate}</div>`;
+
+  // [변경] 모든 HTML을 조합하여 최종 결과물 출력
   $("#result").innerHTML =
-    header + `<table class="table">${thead}<tbody>${rows}</tbody></table>`;
+    studentHeader +
+    materialsHeaderHtml +
+    `<table class="table">${thead}<tbody>${rows}</tbody></table>`;
+
   document.querySelectorAll(".js-date").forEach((el) => {
     el.onclick = () => openSkipModal(el.getAttribute("data-date"));
   });
 }
+
 function formatMain(it) {
   const line1 = it.lecture_range || `${it.material_id} ${it.unit_code}`;
   const line2 = [

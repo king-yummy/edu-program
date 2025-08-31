@@ -64,6 +64,30 @@
       .test-info b {
         font-size: 14px;
       }
+
+      /* [추가] 교재 정보 헤더 스타일 */
+      .materials-header {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-bottom: 20px;
+        padding-bottom: 20px;
+        border-bottom: 1px solid var(--border);
+      }
+      .material-item {
+        background: #f8fafc;
+        border-radius: 12px;
+        padding: 12px 16px;
+        flex: 1 1 220px; /* 화면 크기에 따라 유연하게 조절 */
+      }
+      .material-title {
+        font-weight: bold;
+      }
+      .material-lecture {
+        font-size: 14px;
+        color: var(--muted);
+        margin-top: 4px;
+      }
     </style>
   </head>
   <body>

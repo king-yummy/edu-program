@@ -1,4 +1,7 @@
+// /api/materials.js — 전체 교체
+
 import { readSheetObjects } from "../lib/sheets.js";
+
 export default async function handler(req, res) {
   if (req.method !== "GET") {
     res.setHeader("Allow", "GET");
@@ -9,8 +12,9 @@ export default async function handler(req, res) {
     const rows = await readSheetObjects(RANGE);
     const out = rows.map((r, i) => ({
       material_id: String(r.material_id ?? r.id ?? `MAT-${i + 1}`),
-      type: String(r.type || "MAIN").toUpperCase(), // MAIN | VOCAB
+      type: String(r.type || "MAIN").toUpperCase(),
       title: String(r.title ?? r.name ?? ""),
+      lecture: String(r.lecture || ""), // [추가] lecture 정보
     }));
     return res.status(200).json(out);
   } catch {
