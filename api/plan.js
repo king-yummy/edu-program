@@ -1,101 +1,493 @@
-// api/plan.js
-import { generatePlan } from "../lib/schedule.js";
-import { getAllTests } from "../lib/kv.js";
+// /public/js/plan.js  — 전체 교체본
 
-const DOW = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
-const toYMD = (d) => {
-  const x = new Date(d);
-  if (Number.isNaN(x)) return "";
-  return x.toISOString().slice(0, 10);
+// -------- 공통 유틸 --------
+const $ = (q) => document.querySelector(q);
+const api = async (path, opt) => {
+  const res = await fetch(path, opt);
+  const txt = await res.text();
+  try {
+    return JSON.parse(txt);
+  } catch {
+    throw new Error(
+      `API ${path} -> ${res.status} ${res.statusText}\n${txt.slice(0, 160)}`
+    );
+  }
 };
 
-export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    res.setHeader("Allow", "POST");
-    return res.status(405).json({ ok: false, error: "Method Not Allowed" });
+// -------- 전역 상태 --------
+const state = {
+  classes: [],
+  materials: [],
+  lanes: { main1: [], main2: [], vocab: [] },
+  exceptions: {},
+  classTestName: "",
+  selectedClassId: "",
+  tests: [],
+};
+
+// -------- 부트스트랩 --------
+document.addEventListener("DOMContentLoaded", boot);
+
+async function boot() {
+  // 반 목록
+  state.classes = await api("/api/class");
+  $("#selClass").innerHTML = state.classes
+    .map(
+      (c) => `<option value="${c.id}">${c.name} (${c.schedule_days})</option>`
+    )
+    .join("");
+  $("#selClass").onchange = onClassChange;
+  await onClassChange();
+
+  // 교재 목록
+  const mats = await api("/api/materials");
+  state.materials = mats;
+  const mains = mats.filter((m) => String(m.type).toUpperCase() === "MAIN");
+  const vocs = mats.filter((m) => String(m.type).toUpperCase() === "VOCAB");
+  const opt = (arr) =>
+    `<option value="">선택</option>` +
+    arr
+      .map((m) => `<option value="${m.material_id}">${m.title}</option>`)
+      .join("");
+  $("#selMain1").innerHTML = opt(mains);
+  $("#selMain2").innerHTML = opt(mains);
+  $("#selVocab").innerHTML = opt(vocs);
+
+  // 버튼
+  $("#btnAddMain1").onclick = () => addToLane("main1", $("#selMain1").value);
+  $("#btnAddMain2").onclick = () => addToLane("main2", $("#selMain2").value);
+  $("#btnAddVocab").onclick = () => addToLane("vocab", $("#selVocab").value);
+  $("#btnPreview").onclick = previewPlan;
+  $("#btnPrint").onclick = () => window.print();
+
+  // 날짜 기본값
+  const today = new Date().toISOString().slice(0, 10);
+  $("#startDate").value = today;
+  $("#endDate").value = today;
+
+  // 시험 UI 초기화
+  const now = new Date();
+  const mm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
+    2,
+    "0"
+  )}`;
+  const monthEl = $("#testMonth");
+  if (monthEl) monthEl.value = mm;
+  $("#btnTestReload")?.addEventListener("click", reloadTests);
+  $("#btnTestAdd")?.addEventListener("click", addTest);
+}
+
+// -------- 반 선택 시 처리(학생+시험) --------
+async function onClassChange() {
+  const classId = $("#selClass").value;
+  state.selectedClassId = classId;
+
+  const cls = state.classes.find((c) => c.id === classId);
+  $("#classDays").textContent = cls ? `기본 요일: ${cls.schedule_days}` : "";
+  state.classTestName = cls?.test || "";
+
+  if (!classId) {
+    $("#selStudent").innerHTML = "";
+    $("#testList").innerHTML = "";
+    return;
   }
 
-  let body = {};
-  try {
-    body =
-      typeof req.body === "string"
-        ? JSON.parse(req.body || "{}")
-        : req.body || {};
-  } catch {
-    return res.status(400).json({ ok: false, error: "Invalid JSON body" });
+  // 학생 로드
+  const res = await api(`/api/student?classId=${encodeURIComponent(classId)}`);
+  const students = Array.isArray(res) ? res : res?.students || [];
+  $("#selStudent").innerHTML = students
+    .map(
+      (s) =>
+        `<option value="${s.id}">${s.name} (${s.school} ${s.grade})</option>`
+    )
+    .join("");
+
+  // 시험 로드
+  await reloadTests();
+}
+
+// -------- 교재 Lane 관리 --------
+async function addToLane(lane, materialId) {
+  if (!materialId) return;
+  const exists = state.lanes[lane].some((x) => x.materialId === materialId);
+  if (exists) return alert("이미 추가된 교재입니다.");
+
+  const title =
+    (state.materials.find((m) => m.material_id === materialId) || {}).title ||
+    materialId;
+
+  // 각 교재의 유닛(차시) 불러오기 — 서버에 /api/mainBook, /api/vocaBook 라우트가 있어야 함
+  const units =
+    lane === "vocab"
+      ? await api(`/api/vocaBook?materialId=${encodeURIComponent(materialId)}`)
+      : await api(`/api/mainBook?materialId=${encodeURIComponent(materialId)}`);
+
+  if (!Array.isArray(units) || !units.length)
+    return alert("해당 교재의 차시가 없습니다.");
+
+  state.lanes[lane].push({
+    materialId,
+    title,
+    units,
+    startUnitCode: units[0].unit_code,
+  });
+  renderLane(lane);
+}
+
+function removeFromLane(lane, materialId) {
+  state.lanes[lane] = state.lanes[lane].filter(
+    (x) => x.materialId !== materialId
+  );
+  renderLane(lane);
+}
+
+function move(lane, materialId, dir) {
+  const arr = state.lanes[lane];
+  const i = arr.findIndex((x) => x.materialId === materialId);
+  if (i < 0) return;
+  const j = i + dir;
+  if (j < 0 || j >= arr.length) return;
+  [arr[i], arr[j]] = [arr[j], arr[i]];
+  renderLane(lane);
+}
+
+function renderLane(lane) {
+  const box =
+    lane === "main1"
+      ? $("#laneMain1")
+      : lane === "main2"
+      ? $("#laneMain2")
+      : $("#laneVocab");
+
+  const arr = state.lanes[lane];
+  if (!arr.length) {
+    box.innerHTML = `<div class="small muted">책을 추가하세요.</div>`;
+    return;
   }
 
-  const {
-    // 공통
-    classId = "",
+  box.innerHTML = arr
+    .map(
+      (b, i) => `
+    <div class="book-card">
+      <div class="book-head">
+        <div><b>${b.title}</b> <span class="small">(${
+        b.materialId
+      })</span></div>
+        <div class="no-print">
+          <button onclick="move('${lane}','${b.materialId}',-1)">▲</button>
+          <button onclick="move('${lane}','${b.materialId}', 1)">▼</button>
+          <button onclick="removeFromLane('${lane}','${
+        b.materialId
+      }')">삭제</button>
+        </div>
+      </div>
+      ${
+        i === 0
+          ? `
+        <div class="row mt">
+          <div style="flex:1">
+            <label class="small">시작 차시</label>
+            <select data-start="${lane}:${b.materialId}">
+              ${b.units
+                .map(
+                  (u) =>
+                    `<option value="${u.unit_code}" ${
+                      u.unit_code === b.startUnitCode ? "selected" : ""
+                    }>
+                  ${u.unit_code} — ${u.lecture_range || u.title || ""}
+                </option>`
+                )
+                .join("")}
+            </select>
+          </div>
+        </div>`
+          : `<div class="small muted mt">다음 책은 자동으로 첫 차시부터 시작</div>`
+      }
+    </div>
+  `
+    )
+    .join("");
 
-    // A형 입력
+  box.querySelectorAll("select[data-start]").forEach((s) => {
+    s.onchange = (e) => {
+      const [ln, mid] = s.getAttribute("data-start").split(":");
+      const it = state.lanes[ln].find((x) => x.materialId === mid);
+      if (it) it.startUnitCode = e.target.value;
+    };
+  });
+}
+
+// 전역에서 버튼이 접근할 수 있게 노출
+window.removeFromLane = removeFromLane;
+window.move = move;
+
+// -------- 플랜 생성 --------
+function getDaysCSV() {
+  const classId = $("#selClass").value;
+  const cls = state.classes.find((c) => c.id === classId);
+  return (
+    $("#customDays").value ||
+    cls?.schedule_days ||
+    "MON,WED,FRI"
+  ).toUpperCase();
+}
+
+async function previewPlan() {
+  const studentName =
+    $("#selStudent option:checked")?.textContent?.split(" (")[0] || "";
+  const startDate = $("#startDate").value;
+  const endDate = $("#endDate").value;
+  if (!startDate || !endDate) return alert("시작/끝 날짜를 선택하세요.");
+
+  const lanes = {};
+  for (const ln of ["main1", "main2", "vocab"]) {
+    lanes[ln] = state.lanes[ln].map((b, idx) => ({
+      materialId: b.materialId,
+      ...(idx === 0 ? { startUnitCode: b.startUnitCode } : {}),
+    }));
+  }
+
+  const userSkips = Object.entries(state.exceptions).map(([date, v]) => ({
+    date,
+    type: v.type,
+    reason: v.reason || "",
+  }));
+
+  const body = {
+    classId: state.selectedClassId,
+    studentName,
     startDate,
     endDate,
-    days,
+    days: getDaysCSV(),
+    lanes,
+    userSkips,
+    testName: state.classTestName,
+  };
 
-    // B형 입력(구형 호환)
-    weeks,
-    daysOfWeek,
+  const res = await api("/api/plan", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
 
-    // 기타
-    lanes = {},
-    userSkips = [],
-    exceptions,
-    tests: testsFromBody = [],
-  } = body;
-
-  if (!startDate) {
-    return res
-      .status(400)
-      .json({ ok: false, error: "startDate required (YYYY-MM-DD)" });
+  if (!res.ok) {
+    $("#result").textContent = res.error || "생성 실패";
+    return;
   }
 
-  // days 정규화
-  let daysStr = typeof days === "string" && days ? days.toUpperCase() : "";
-  if (!daysStr && Array.isArray(daysOfWeek) && daysOfWeek.length) {
-    daysStr = daysOfWeek.map((i) => DOW[Number(i) || 0]).join(",");
-  }
-  if (!daysStr) daysStr = "MON,WED,FRI";
+  renderPrintable(res.items, { studentName, startDate, endDate, lanes });
+}
 
-  // endDate 없으면 weeks로 계산
-  let end = endDate;
-  if (!end) {
-    const w = Number.isFinite(Number(weeks)) ? Number(weeks) : 4;
-    const s = new Date(startDate);
-    s.setDate(s.getDate() + w * 7 - 1);
-    end = toYMD(s);
-  }
+function renderPrintable(items, ctx) {
+  const titleOf = (id) =>
+    (state.materials.find((m) => m.material_id === id) || {}).title || id;
+  const dates = [...new Set(items.map((i) => i.date))].sort();
 
-  const skips = Array.isArray(userSkips) ? userSkips : [];
-  if (Array.isArray(exceptions)) skips.push(...exceptions);
+  const thead = `
+    <thead><tr>
+      <th style="width:110px">날짜</th>
+      <th>메인1</th><th>메인2</th><th>어휘</th>
+    </tr></thead>`;
 
-  let tests = [];
-  try {
-    const all = await getAllTests();
-    if (Array.isArray(all))
-      tests = all.filter((t) => String(t.classId) === String(classId));
-  } catch {
-    /* ignore */
-  }
-  if (Array.isArray(testsFromBody) && testsFromBody.length) {
-    tests = testsFromBody;
-  }
+  const rows = dates
+    .map((d) => {
+      const dayItems = items.filter((x) => x.date === d);
+      const skip = dayItems.find((x) => x.source === "skip");
+      const test = dayItems.find((x) => x.source === "test");
+      const tag = `data-date="${d}" class="js-date" style="cursor:pointer; text-decoration:underline;"`;
 
-  try {
-    const items = await generatePlan({
-      startDate,
-      endDate: end,
-      days: daysStr,
-      lanes,
-      userSkips: skips,
-      tests,
-      testMode: "explicit", // 항상 explicit 모드로 고정
-    });
-    return res.status(200).json({ ok: true, items });
-  } catch (e) {
-    return res
-      .status(500)
-      .json({ ok: false, error: e.message || "plan failed" });
+      if (skip) {
+        return `<tr>
+        <td ${tag}><b>${d}</b></td>
+        <td colspan="3" style="color:#64748b;background:#f8fafc;">${skip.reason}</td>
+      </tr>`;
+      }
+
+      if (test) {
+        return `<tr>
+        <td ${tag}><b>${d}</b></td>
+        <td>${test.title}</td>
+        <td>풀이 및 오답</td>
+        <td></td>
+      </tr>`;
+      }
+
+      const m1 = dayItems.find(
+        (x) =>
+          x.source === "main" &&
+          x.material_id &&
+          ctx.lanes.main1.some((b) => b.materialId === x.material_id)
+      );
+      const m2 = dayItems.find(
+        (x) =>
+          x.source === "main" &&
+          x.material_id &&
+          ctx.lanes.main2.some((b) => b.materialId === x.material_id)
+      );
+      const vs = dayItems.filter((x) => x.source === "vocab");
+
+      return `<tr>
+      <td ${tag}><b>${d}</b></td>
+      <td>${m1 ? formatMain(m1) : ""}</td>
+      <td>${m2 ? formatMain(m2) : ""}</td>
+      <td>${vs.map(formatVocab).join("<br>")}</td>
+    </tr>`;
+    })
+    .join("");
+
+  const header = `
+    <div style="margin-bottom:12px;">
+      <b>${ctx.studentName || "학생"}</b> /
+      ${ctx.startDate} ~ ${ctx.endDate}
+    </div>`;
+
+  $("#result").innerHTML =
+    header + `<table class="table">${thead}<tbody>${rows}</tbody></table>`;
+
+  document.querySelectorAll(".js-date").forEach((el) => {
+    el.onclick = () => openSkipModal(el.getAttribute("data-date"));
+  });
+}
+
+function formatMain(it) {
+  const line1 = it.lecture_range || `${it.material_id} ${it.unit_code}`;
+  const line2 = [
+    it.pages && `p.${it.pages}`,
+    it.wb && `WB ${it.wb}`,
+    it.dt_vocab && `단어 ${it.dt_vocab}`,
+    it.key_sents && `문장 ${it.key_sents}`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return [line1, line2].filter(Boolean).join("<br>");
+}
+function formatVocab(it) {
+  return [it.lecture_range, it.vocab_range].filter(Boolean).join(" · ");
+}
+
+// -------- 스킵(예외) 모달 --------
+function openSkipModal(date) {
+  const modal = $("#skipModal");
+  $("#skipDateLabel").textContent = date;
+  $("#skipReason").value = state.exceptions[date]?.reason || "";
+  modal.dataset.date = date;
+  modal.style.display = "flex";
+}
+function closeSkipModal() {
+  $("#skipModal").style.display = "none";
+}
+["vacation", "sick", "other"].forEach((t) => {
+  const btn = document.querySelector(`#skipModal [data-sel='${t}']`);
+  if (btn)
+    btn.onclick = () => {
+      const date = $("#skipModal").dataset.date;
+      const reason = $("#skipReason").value.trim();
+      state.exceptions[date] = { type: t, reason };
+    };
+});
+$("#btnSkipSave")?.addEventListener("click", () => {
+  closeSkipModal();
+  previewPlan();
+});
+$("#btnSkipDelete")?.addEventListener("click", () => {
+  const date = $("#skipModal").dataset.date;
+  delete state.exceptions[date];
+  closeSkipModal();
+  previewPlan();
+});
+$("#btnSkipClose")?.addEventListener("click", closeSkipModal);
+
+// -------- 시험 CRUD --------
+async function reloadTests() {
+  const classId = state.selectedClassId;
+  const el = $("#testList");
+  if (!classId) {
+    if (el) el.innerHTML = "";
+    return;
   }
+  const month = $("#testMonth")?.value || "";
+  const r = await api(
+    `/api/class-tests?classId=${encodeURIComponent(
+      classId
+    )}&month=${encodeURIComponent(month)}`
+  );
+  state.tests = (r && r.items) || [];
+  renderTests();
+}
+
+function renderTests() {
+  const el = $("#testList");
+  if (!el) return;
+  if (!state.tests.length) {
+    el.innerHTML = `<div class="muted">등록된 시험이 없습니다.</div>`;
+    return;
+  }
+  el.innerHTML = state.tests
+    .map(
+      (t) => `
+    <div class="row" data-id="${t.id}" style="gap:8px">
+      <input type="date" value="${t.date}">
+      <input type="text" value="${t.title}">
+      <input type="text" value="${
+        t.materialId || ""
+      }" placeholder="materialId(선택)">
+      <button class="btn btn-xs" onclick="updateTest('${
+        t.id
+      }', this)">수정</button>
+      <button class="btn btn-xs" style="background:#ef4444" onclick="deleteTest('${
+        t.id
+      }')">삭제</button>
+    </div>
+  `
+    )
+    .join("");
+}
+
+async function addTest() {
+  const classId = state.selectedClassId;
+  if (!classId) return alert("반을 먼저 선택하세요.");
+  const date = $("#newTestDate").value;
+  const title = $("#newTestTitle").value.trim();
+  const materialId = $("#newTestMaterial").value.trim();
+  if (!date || !title) return alert("날짜와 시험명을 입력하세요.");
+
+  const r = await api(
+    `/api/class-tests?classId=${encodeURIComponent(classId)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ date, title, materialId }),
+    }
+  );
+  if (!r.ok) return alert(r.error || "저장 실패");
+  $("#newTestDate").value = "";
+  $("#newTestTitle").value = "";
+  $("#newTestMaterial").value = "";
+  await reloadTests();
+}
+
+async function updateTest(id, btn) {
+  const row = btn.closest(".row");
+  const [dateEl, titleEl, matEl] = row.querySelectorAll("input");
+  const patch = {
+    date: dateEl.value,
+    title: titleEl.value.trim(),
+    materialId: matEl.value.trim(),
+  };
+  const r = await api(`/api/test?id=${encodeURIComponent(id)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  if (!r.ok) return alert(r.error || "수정 실패");
+  await reloadTests();
+}
+
+async function deleteTest(id) {
+  if (!confirm("정말 삭제할까요?")) return;
+  const r = await api(`/api/test?id=${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+  if (!r.ok) return alert(r.error || "삭제 실패");
+  await reloadTests();
 }
