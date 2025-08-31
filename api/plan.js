@@ -1,12 +1,14 @@
-// api/plan.js
+// /api/plan.js — 전체 교체
+
 import { generatePlan } from "../lib/schedule.js";
 import { getAllTests } from "../lib/kv.js";
 
-const DOW = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
 const toYMD = (d) => {
-  const x = new Date(d);
-  if (Number.isNaN(x)) return "";
-  return x.toISOString().slice(0, 10);
+  try {
+    return new Date(d).toISOString().slice(0, 10);
+  } catch {
+    return "";
+  }
 };
 
 export default async function handler(req, res) {
@@ -26,23 +28,12 @@ export default async function handler(req, res) {
   }
 
   const {
-    // 공통
     classId = "",
-
-    // A형 입력
     startDate,
     endDate,
     days,
-
-    // B형 입력(구형 호환)
-    weeks,
-    daysOfWeek,
-
-    // 기타
     lanes = {},
     userSkips = [],
-    exceptions,
-    tests: testsFromBody = [],
   } = body;
 
   if (!startDate) {
@@ -50,47 +41,38 @@ export default async function handler(req, res) {
       .status(400)
       .json({ ok: false, error: "startDate required (YYYY-MM-DD)" });
   }
-
-  // days 정규화
-  let daysStr = typeof days === "string" && days ? days.toUpperCase() : "";
-  if (!daysStr && Array.isArray(daysOfWeek) && daysOfWeek.length) {
-    daysStr = daysOfWeek.map((i) => DOW[Number(i) || 0]).join(",");
-  }
-  if (!daysStr) daysStr = "MON,WED,FRI";
-
-  // endDate 없으면 weeks로 계산
-  let end = endDate;
-  if (!end) {
-    const w = Number.isFinite(Number(weeks)) ? Number(weeks) : 4;
-    const s = new Date(startDate);
-    s.setDate(s.getDate() + w * 7 - 1);
-    end = toYMD(s);
+  if (!endDate) {
+    return res
+      .status(400)
+      .json({ ok: false, error: "endDate required (YYYY-MM-DD)" });
   }
 
-  const skips = Array.isArray(userSkips) ? userSkips : [];
-  if (Array.isArray(exceptions)) skips.push(...exceptions);
-
-  let tests = [];
+  // [핵심 변경] 프론트엔드에서 받은 시험 정보(testsFromBody)를 무시하고,
+  // 서버(KV 저장소)에서 직접 모든 시험 정보를 가져온 뒤, 플랜 기간으로 필터링합니다.
+  let testsInRange = [];
   try {
-    const all = await getAllTests();
-    if (Array.isArray(all))
-      tests = all.filter((t) => String(t.classId) === String(classId));
+    const allTests = await getAllTests();
+    if (Array.isArray(allTests)) {
+      testsInRange = allTests
+        .filter((t) => String(t.classId) === String(classId))
+        .filter((t) => {
+          const testDate = toYMD(t.date);
+          return testDate >= toYMD(startDate) && testDate <= toYMD(endDate);
+        });
+    }
   } catch {
-    /* ignore */
-  }
-  if (Array.isArray(testsFromBody) && testsFromBody.length) {
-    tests = testsFromBody;
+    // KV 조회 실패 시 무시
   }
 
   try {
     const items = await generatePlan({
       startDate,
-      endDate: end,
-      days: daysStr,
+      endDate,
+      days:
+        typeof days === "string" && days ? days.toUpperCase() : "MON,WED,FRI",
       lanes,
-      userSkips: skips,
-      tests,
-      testMode: "explicit", // 항상 explicit 모드로 고정
+      userSkips,
+      tests: testsInRange, // [핵심 변경] 기간에 맞는 시험 정보만 전달
     });
     return res.status(200).json({ ok: true, items });
   } catch (e) {

@@ -272,7 +272,6 @@ async function previewPlan() {
     ).toUpperCase(),
     lanes,
     userSkips,
-    tests: state.tests,
   };
   const res = await api("/api/plan", {
     method: "POST",
