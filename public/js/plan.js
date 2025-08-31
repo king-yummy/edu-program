@@ -1,6 +1,8 @@
 // /public/js/plan.js — 최종 수정본
 
-// -------- 공통 유틸 --------
+// 공통 유틸, 전역 상태, 부트스트랩 등 상단부는 이전과 동일합니다.
+// ...
+
 const $ = (q) => document.querySelector(q);
 const api = async (path, opt) => {
   const res = await fetch(path, opt);
@@ -14,7 +16,6 @@ const api = async (path, opt) => {
   }
 };
 
-// -------- 전역 상태 --------
 const state = {
   classes: [],
   materials: [],
@@ -26,11 +27,9 @@ const state = {
   selectedMonth: "",
 };
 
-// -------- 부트스트랩 --------
 document.addEventListener("DOMContentLoaded", boot);
 
 async function boot() {
-  // 반 목록
   state.classes = await api("/api/class");
   const classOptions = state.classes
     .map(
@@ -39,14 +38,12 @@ async function boot() {
     .join("");
   $("#selClass").innerHTML = classOptions;
   $("#selClassInfo").innerHTML = classOptions;
-
   $("#selClass").onchange = onClassChange;
   $("#selClassInfo").onchange = (e) => {
     $("#selClass").value = e.target.value;
     onClassChange();
   };
 
-  // 교재 목록
   const mats = await api("/api/materials");
   state.materials = mats;
   const mains = mats.filter((m) => String(m.type).toUpperCase() === "MAIN");
@@ -60,7 +57,6 @@ async function boot() {
   $("#selMain2").innerHTML = opt(mains);
   $("#selVocab").innerHTML = opt(vocs);
 
-  // 시험 마스터 목록 로드
   try {
     state.testsMaster = await api("/api/tests-master");
     if (Array.isArray(state.testsMaster)) {
@@ -74,19 +70,16 @@ async function boot() {
     console.error("시험 마스터 목록 로딩 실패", e);
   }
 
-  // 버튼
   $("#btnAddMain1").onclick = () => addToLane("main1", $("#selMain1").value);
   $("#btnAddMain2").onclick = () => addToLane("main2", $("#selMain2").value);
   $("#btnAddVocab").onclick = () => addToLane("vocab", $("#selVocab").value);
   $("#btnPreview").onclick = previewPlan;
   $("#btnPrint").onclick = () => window.print();
 
-  // 날짜 기본값
   const today = new Date().toISOString().slice(0, 10);
   $("#startDate").value = today;
   $("#endDate").value = today;
 
-  // 시험 UI 초기화
   const now = new Date();
   state.selectedMonth = `${now.getFullYear()}-${String(
     now.getMonth() + 1
@@ -95,7 +88,6 @@ async function boot() {
   $("#btnPrevMonth").onclick = () => updateMonth(-1);
   $("#btnNextMonth").onclick = () => updateMonth(1);
   $("#btnTestAdd")?.addEventListener("click", addTest);
-
   await onClassChange();
 }
 
@@ -119,13 +111,11 @@ async function onClassChange() {
   const classId = $("#selClass").value;
   state.selectedClassId = classId;
   $("#selClassInfo").value = classId;
-
   if (!classId) {
     $("#selStudent").innerHTML = "";
     $("#testList").innerHTML = "";
     return;
   }
-
   const res = await api(`/api/student?classId=${encodeURIComponent(classId)}`);
   const students = Array.isArray(res) ? res : res?.students || [];
   $("#selStudent").innerHTML =
@@ -141,7 +131,6 @@ async function onClassChange() {
 
 async function addToLane(lane, materialId) {
   if (!materialId) return;
-
   const instanceId = `inst_${Date.now()}_${Math.random()
     .toString(36)
     .slice(2, 7)}`;
@@ -152,10 +141,8 @@ async function addToLane(lane, materialId) {
     lane === "vocab"
       ? await api(`/api/vocaBook?materialId=${encodeURIComponent(materialId)}`)
       : await api(`/api/mainBook?materialId=${encodeURIComponent(materialId)}`);
-
   if (!Array.isArray(units) || !units.length)
     return alert("해당 교재의 차시가 없습니다.");
-
   state.lanes[lane].push({
     instanceId,
     materialId,
@@ -173,7 +160,6 @@ function removeFromLane(lane, instanceId) {
   );
   renderLane(lane);
 }
-
 function move(lane, instanceId, dir) {
   const arr = state.lanes[lane];
   const i = arr.findIndex((x) => x.instanceId === instanceId);
@@ -183,6 +169,8 @@ function move(lane, instanceId, dir) {
   [arr[i], arr[j]] = [arr[j], arr[i]];
   renderLane(lane);
 }
+window.removeFromLane = removeFromLane;
+window.move = move;
 
 function renderLane(lane) {
   const box =
@@ -196,36 +184,28 @@ function renderLane(lane) {
     box.innerHTML = `<div class="small muted">책을 추가하세요.</div>`;
     return;
   }
-
   box.innerHTML = arr
     .map((b) => {
       const startIndex = b.units.findIndex(
         (u) => u.unit_code === b.startUnitCode
       );
-
       const startOptions = b.units
         .map(
           (u) =>
             `<option value="${u.unit_code}" ${
               u.unit_code === b.startUnitCode ? "selected" : ""
-            }>
-          ${u.unit_code} — ${u.lecture_range || u.title || ""}
-        </option>`
+            }>${u.unit_code} — ${u.lecture_range || u.title || ""}</option>`
         )
         .join("");
-
       const endOptions = b.units
         .slice(startIndex)
         .map(
           (u) =>
             `<option value="${u.unit_code}" ${
               u.unit_code === b.endUnitCode ? "selected" : ""
-            }>
-          ${u.unit_code} — ${u.lecture_range || u.title || ""}
-        </option>`
+            }>${u.unit_code} — ${u.lecture_range || u.title || ""}</option>`
         )
         .join("");
-
       return `
       <div class="book-card">
         <div class="book-head">
@@ -237,26 +217,17 @@ function renderLane(lane) {
           </div>
         </div>
         <div class="row mt">
-          <div style="flex:1">
-            <label class="small">시작 차시</label>
-            <select data-type="start" data-lane="${lane}" data-id="${b.instanceId}">${startOptions}</select>
-          </div>
-          <div style="flex:1">
-            <label class="small">종료 차시</label>
-            <select data-type="end" data-lane="${lane}" data-id="${b.instanceId}">${endOptions}</select>
-          </div>
+          <div style="flex:1"> <label class="small">시작 차시</label> <select data-type="start" data-lane="${lane}" data-id="${b.instanceId}">${startOptions}</select> </div>
+          <div style="flex:1"> <label class="small">종료 차시</label> <select data-type="end" data-lane="${lane}" data-id="${b.instanceId}">${endOptions}</select> </div>
         </div>
-      </div>
-    `;
+      </div>`;
     })
     .join("");
-
   box.querySelectorAll("select[data-id]").forEach((s) => {
     s.onchange = (e) => {
       const { type, lane, id } = s.dataset;
       const book = state.lanes[lane].find((x) => x.instanceId === id);
       if (!book) return;
-
       if (type === "start") {
         book.startUnitCode = e.target.value;
         const startIndex = book.units.findIndex(
@@ -265,9 +236,7 @@ function renderLane(lane) {
         const endIndex = book.units.findIndex(
           (u) => u.unit_code === book.endUnitCode
         );
-        if (startIndex > endIndex) {
-          book.endUnitCode = book.startUnitCode;
-        }
+        if (startIndex > endIndex) book.endUnitCode = book.startUnitCode;
         renderLane(lane);
       } else {
         book.endUnitCode = e.target.value;
@@ -275,9 +244,6 @@ function renderLane(lane) {
     };
   });
 }
-
-window.removeFromLane = removeFromLane;
-window.move = move;
 
 async function previewPlan() {
   const studentName =
@@ -287,7 +253,6 @@ async function previewPlan() {
   if (!startDate || !endDate) return alert("시작/끝 날짜를 선택하세요.");
   if (!studentName || studentName === "학생 선택")
     return alert("학생을 선택하세요.");
-
   const lanes = {};
   for (const ln of ["main1", "main2", "vocab"]) {
     lanes[ln] = state.lanes[ln].map((b) => ({
@@ -296,7 +261,6 @@ async function previewPlan() {
       endUnitCode: b.endUnitCode,
     }));
   }
-
   const userSkips = Object.entries(state.exceptions).map(([date, v]) => ({
     date,
     type: v.type,
@@ -316,7 +280,6 @@ async function previewPlan() {
     lanes,
     userSkips,
   };
-
   const res = await api("/api/plan", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -331,7 +294,6 @@ async function previewPlan() {
 
 function renderPrintable(items, ctx) {
   const dates = [...new Set(items.map((i) => i.date))].sort();
-
   const usedMainMaterialIds = [
     ...new Set(
       items
@@ -339,131 +301,95 @@ function renderPrintable(items, ctx) {
         .map((it) => it.material_id)
     ),
   ];
-
   const usedMaterials = usedMainMaterialIds
     .map((id) => state.materials.find((m) => m.material_id === id))
     .filter(Boolean);
-
-  const materialsHeaderHtml = `
-    <div class="materials-header">
-      ${usedMaterials
-        .map(
-          (m) => `
-        <div class="material-item">
-          <div class="material-title">${m.title}</div>
-          <div class="material-lecture">${m.lecture || "인강 정보 없음"}</div>
-        </div>
-      `
-        )
-        .join("")}
-    </div>
-  `;
-
-  const studentHeader = `
-    <div style="margin-bottom:12px;">
-      <b>${ctx.studentName}</b> /
-      ${ctx.startDate} ~ ${ctx.endDate}
-    </div>`;
-
+  const materialsHeaderHtml = `<div class="materials-header">${usedMaterials
+    .map(
+      (m) =>
+        `<div class="material-item"><div class="material-title">${
+          m.title
+        }</div><div class="material-lecture">${
+          m.lecture || "인강 정보 없음"
+        }</div></div>`
+    )
+    .join("")}</div>`;
+  const studentHeader = `<div style="margin-bottom:12px;"><b>${ctx.studentName}</b> / ${ctx.startDate} ~ ${ctx.endDate}</div>`;
   const thead = `
     <thead style="font-size: 12px; text-align: center;">
       <tr>
         <th rowspan="3" style="width:100px; vertical-align: middle;">날짜</th>
-        <th colspan="5" style="padding: 4px;">메인 1</th>
-        <th colspan="5" style="padding: 4px;">메인 2</th>
-        <th colspan="2" style="padding: 4px;">단어 DT</th>
+        <th colspan="5">메인 1</th> <th colspan="5">메인 2</th> <th colspan="2">단어 DT</th>
       </tr>
       <tr>
-        <th colspan="3" style="padding: 4px;">수업 진도</th>
-        <th colspan="2" style="padding: 4px;">티칭 챌린지</th>
-        <th colspan="3" style="padding: 4px;">수업 진도</th>
-        <th colspan="2" style="padding: 4px;">티칭 챌린지</th>
-        <th rowspan="2" style="vertical-align: middle; padding: 4px;">회차</th>
-        <th rowspan="2" style="vertical-align: middle; padding: 4px;">DT</th>
+        <th colspan="3">수업 진도</th> <th colspan="2">티칭 챌린지</th>
+        <th colspan="3">수업 진도</th> <th colspan="2">티칭 챌린지</th>
+        <th rowspan="2" style="vertical-align: middle;">회차</th> <th rowspan="2" style="vertical-align: middle;">DT</th>
       </tr>
       <tr>
-        <th style="padding: 4px;">인강</th>
-        <th style="padding: 4px;">교재 page</th>
-        <th style="padding: 4px;">WB</th>
-        <th style="padding: 4px;">개념+단어</th>
-        <th style="padding: 4px;">문장학습</th>
-        <th style="padding: 4px;">인강</th>
-        <th style="padding: 4px;">교재 page</th>
-        <th style="padding: 4px;">WB</th>
-        <th style="padding: 4px;">개념+단어</th>
-        <th style="padding: 4px;">문장학습</th>
+        <th>인강</th><th>교재 page</th><th>WB</th><th>개념+단어</th><th>문장학습</th>
+        <th>인강</th><th>교재 page</th><th>WB</th><th>개념+단어</th><th>문장학습</th>
       </tr>
     </thead>`;
-
   const rows = dates
     .map((d) => {
       const dayItems = items.filter((x) => x.date === d);
       const skip = dayItems.find((x) => x.source === "skip");
       const tests = dayItems.filter((x) => x.source === "test");
-
       const DOW_KR = ["일", "월", "화", "수", "목", "금", "토"];
       const dateObj = new Date(d + "T00:00:00Z");
       const dayName = DOW_KR[dateObj.getUTCDay()];
       const dateString = `<b>${d.slice(2).replace(/-/g, ".")} (${dayName})</b>`;
       const tag = `data-date="${d}" class="js-date" style="cursor:pointer; text-decoration:underline;"`;
-
-      if (skip) {
+      if (skip)
         return `<tr><td ${tag}>${dateString}</td><td colspan="12" style="color:#64748b;background:#f8fafc;">${skip.reason}</td></tr>`;
-      }
-      if (tests.length) {
-        const testContent = tests.map((t) => t.title).join("<br>");
-        return `<tr><td ${tag}>${dateString}</td><td colspan="12" style="background: #fffbe6;">${testContent}</td></tr>`;
-      }
+      if (tests.length)
+        return `<tr><td ${tag}>${dateString}</td><td colspan="12" style="background: #fffbe6;">${tests
+          .map((t) => t.title)
+          .join("<br>")}</td></tr>`;
 
       const m1 = dayItems.find(
         (x) =>
           x.source === "main" &&
-          x.material_id &&
           ctx.lanes.main1.some((b) => b.materialId === x.material_id)
       );
       const m2 = dayItems.find(
         (x) =>
           x.source === "main" &&
-          x.material_id &&
           ctx.lanes.main2.some((b) => b.materialId === x.material_id)
       );
       const v = dayItems.find((x) => x.source === "vocab");
 
+      // [핵심 수정] OT, '복귀' 렌더링 로직
       const renderMainLane = (mainItem) => {
-        if (!mainItem) {
-          return `<td></td><td></td><td></td><td></td><td></td>`;
-        }
+        if (!mainItem) return `<td></td>`.repeat(5);
+        const title =
+          state.materials.find((m) => m.material_id === mainItem.material_id)
+            ?.title || mainItem.material_id;
         if (mainItem.isOT) {
-          const title =
-            state.materials.find((m) => m.material_id === mainItem.material_id)
-              ?.title || mainItem.material_id;
-          return `<td colspan="5" style="background: #F9FF00; border: 1px solid red; font-weight: bold;">${title} OT</td>`;
+          return `<td colspan="5" style="background: #F9FF00; border: 1px solid red; font-weight: bold;">"${title}" OT</td>`;
         }
-        return `<td>${mainItem.lecture_range || ""}</td>
-                <td>${mainItem.pages ? `p.${mainItem.pages}` : ""}</td>
-                <td>${mainItem.wb ? `p.${mainItem.wb}` : ""}</td>
-                <td>${mainItem.dt_vocab || ""}</td>
-                <td>${mainItem.key_sents || ""}</td>`;
+        if (mainItem.isReturn) {
+          return `<td colspan="5" style="background: #e0f2fe; border: 1px solid #0ea5e9; font-weight: bold;">"${title}" 복귀</td>`;
+        }
+        return `<td>${mainItem.lecture_range || ""}</td><td>${
+          mainItem.pages ? `p.${mainItem.pages}` : ""
+        }</td><td>${mainItem.wb ? `p.${mainItem.wb}` : ""}</td><td>${
+          mainItem.dt_vocab || ""
+        }</td><td>${mainItem.key_sents || ""}</td>`;
       };
 
       const m1_html = renderMainLane(m1);
       const m2_html = renderMainLane(m2);
 
-      return `<tr style="font-size: 14px;">
-          <td ${tag}>${dateString}</td>
-          ${m1_html}
-          ${m2_html}
-          <td>${v?.lecture_range || ""}</td>
-          <td>${v?.vocab_range || ""}</td>
-        </tr>`;
+      return `<tr style="font-size: 14px;"><td ${tag}>${dateString}</td>${m1_html}${m2_html}<td>${
+        v?.lecture_range || ""
+      }</td><td>${v?.vocab_range || ""}</td></tr>`;
     })
     .join("");
-
-  $("#result").innerHTML =
-    studentHeader +
-    materialsHeaderHtml +
-    `<table class="table">${thead}<tbody>${rows}</tbody></table>`;
-
+  $(
+    "#result"
+  ).innerHTML = `${studentHeader}${materialsHeaderHtml}<table class="table">${thead}<tbody>${rows}</tbody></table>`;
   document.querySelectorAll(".js-date").forEach((el) => {
     el.onclick = () => openSkipModal(el.getAttribute("data-date"));
   });
@@ -479,6 +405,7 @@ function openSkipModal(date) {
 function closeSkipModal() {
   $("#skipModal").style.display = "none";
 }
+
 ["vacation", "sick", "other"].forEach((t) => {
   const btn = document.querySelector(`#skipModal [data-sel='${t}']`);
   if (btn)
@@ -552,11 +479,8 @@ function editTest(id) {
   dateInput.style.border = "1px solid #ccc";
   titleEl.innerHTML = `<input type="text" value="${originalTitle}" class="js-edit-title-input" />`;
   const actions = item.querySelector(".test-actions");
-  actions.innerHTML = `
-    <button class="btn-xs" onclick="updateTest('${id}')">저장</button>
-    <button class="btn-xs" style="background:#94a3b8" onclick="reloadTests()">취소</button>`;
+  actions.innerHTML = `<button class="btn-xs" onclick="updateTest('${id}')">저장</button><button class="btn-xs" style="background:#94a3b8" onclick="reloadTests()">취소</button>`;
 }
-
 async function updateTest(id) {
   const item = $(`.test-item[data-id='${id}']`);
   if (!item) return;
@@ -576,7 +500,6 @@ async function updateTest(id) {
   }
   await reloadTests();
 }
-
 async function addTest() {
   const classId = state.selectedClassId;
   if (!classId) return alert("반을 먼저 선택하세요.");
@@ -599,7 +522,6 @@ async function addTest() {
   $("#newTestTitle").value = "";
   await reloadTests();
 }
-
 async function deleteTest(id) {
   if (!confirm("정말 삭제할까요?")) return;
   const r = await api(`/api/test?id=${encodeURIComponent(id)}`, {
@@ -611,7 +533,6 @@ async function deleteTest(id) {
   }
   await reloadTests();
 }
-
 window.editTest = editTest;
 window.updateTest = updateTest;
 window.deleteTest = deleteTest;
