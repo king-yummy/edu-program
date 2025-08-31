@@ -31,15 +31,20 @@ document.addEventListener("DOMContentLoaded", boot);
 async function boot() {
   // 반 목록
   state.classes = await api("/api/class");
-  $("#selClass").innerHTML = state.classes
+  const classOptions = state.classes
     .map(
       (c) => `<option value="${c.id}">${c.name} (${c.schedule_days})</option>`
     )
     .join("");
+  $("#selClass").innerHTML = classOptions;
+  $("#selClassInfo").innerHTML = classOptions; // 기본 정보 섹션의 반 목록도 채우기
   $("#selClass").onchange = onClassChange;
-  await onClassChange();
+  $("#selClassInfo").onchange = (e) => {
+    $("#selClass").value = e.target.value;
+    onClassChange();
+  };
 
-  // 교재 목록 (기존 /api/materials 경로 오류 수정)
+  // 교재 목록
   const mats = await api("/api/materials");
   state.materials = mats;
   const mains = mats.filter((m) => String(m.type).toUpperCase() === "MAIN");
@@ -53,7 +58,7 @@ async function boot() {
   $("#selMain2").innerHTML = opt(mains);
   $("#selVocab").innerHTML = opt(vocs);
 
-  // [핵심] 시험 마스터 목록 로드 및 드롭다운 채우기
+  // 시험 마스터 목록 로드
   try {
     state.testsMaster = await api("/api/tests-master");
     if (Array.isArray(state.testsMaster)) {
@@ -79,16 +84,18 @@ async function boot() {
   $("#startDate").value = today;
   $("#endDate").value = today;
 
-  // 시험 UI 초기화
+  // [수정 완료된 최종 버전] 시험 UI 초기화
   const now = new Date();
-  const mm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
-    2,
-    "0"
-  )}`;
-  const monthEl = $("#testMonth");
-  if (monthEl) monthEl.value = mm;
-  $("#btnTestReload")?.addEventListener("click", reloadTests);
+  state.selectedMonth = `${now.getFullYear()}-${String(
+    now.getMonth() + 1
+  ).padStart(2, "0")}`;
+  renderMonthNavigator();
+  $("#btnPrevMonth").onclick = () => updateMonth(-1);
+  $("#btnNextMonth").onclick = () => updateMonth(1);
   $("#btnTestAdd")?.addEventListener("click", addTest);
+
+  // 첫 반 선택 강제 실행
+  await onClassChange();
 }
 
 // -------- 반 선택 시 처리(학생+시험) --------
