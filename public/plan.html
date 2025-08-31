@@ -35,7 +35,6 @@
         font-size: 12px;
         color: var(--muted);
       }
-      /* [추가] 새로운 UI 스타일 */
       .month-nav {
         display: flex;
         align-items: center;
@@ -58,6 +57,13 @@
         padding: 6px 0;
         align-items: center;
       }
+      .test-actions button {
+        padding: 4px 6px;
+      }
+      .test-info input,
+      .test-info b {
+        font-size: 14px;
+      }
     </style>
   </head>
   <body>
@@ -69,72 +75,69 @@
     </nav>
 
     <main class="container space">
-      <section class="card" style="margin-top: 16px">
-        <div class="card-h">반 관리</div>
-        <div class="card-b">
-          <div class="grid2">
-            <div>
-              <div class="mb">
-                <label>반 선택</label>
-                <select id="selClass"></select>
-              </div>
-
-              <div class="mt">
-                <label>시험 월</label>
-                <div class="month-nav">
-                  <button id="btnPrevMonth">◀</button>
-                  <div id="testMonthDisplay" class="month-display"></div>
-                  <button id="btnNextMonth">▶</button>
-                </div>
+      <div class="grid2" style="align-items: start">
+        <section class="card">
+          <div class="card-h">반 관리</div>
+          <div class="card-b">
+            <div class="mb">
+              <label>반 선택</label>
+              <select id="selClass"></select>
+            </div>
+            <div class="mt">
+              <label>시험 월</label>
+              <div class="month-nav">
+                <button id="btnPrevMonth">◀</button>
+                <div id="testMonthDisplay" class="month-display"></div>
+                <button id="btnNextMonth">▶</button>
               </div>
             </div>
-
-            <div>
-              <div class="mb">
-                <label>시험 일정</label>
-                <div id="testList" class="list" style="min-height: 120px"></div>
-              </div>
-
-              <div class="mt">
-                <label>새 시험 추가</label>
-                <div class="row">
-                  <input type="date" id="newTestDate" style="flex: 1.5" />
-                  <select id="newTestTitle" style="flex: 2">
-                    <option value="">시험 선택</option>
-                  </select>
-                  <button id="btnTestAdd" class="btn" style="flex: 1">
-                    추가
-                  </button>
-                </div>
+            <div class="mt">
+              <label>시험 일정</label>
+              <div id="testList" class="list" style="min-height: 120px"></div>
+            </div>
+            <div class="mt">
+              <label>새 시험 추가</label>
+              <div class="row">
+                <input type="date" id="newTestDate" style="flex: 1.5" />
+                <select id="newTestTitle" style="flex: 2"></select>
+                <button id="btnTestAdd" class="btn" style="flex: 1">
+                  추가
+                </button>
               </div>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      <section class="card">
-        <div class="card-h">기본 정보</div>
-        <div class="card-b grid">
-          <div>
-            <label>반</label>
-            <select
-              id="selClassInfo"
-              disabled
-              style="background: #f1f5f9"
-            ></select>
+        <section class="card">
+          <div class="card-h">학생 관리</div>
+          <div class="card-b">
+            <div class="mb">
+              <label>반</label>
+              <select
+                id="selClassInfo"
+                disabled
+                style="background: #f1f5f9"
+              ></select>
+            </div>
+            <div class="mt">
+              <label>학생</label>
+              <select id="selStudent"></select>
+            </div>
+            <div class="mt">
+              <label>시작일</label>
+              <input type="date" id="startDate" />
+            </div>
+            <div class="mt">
+              <label>끝 날짜</label>
+              <input type="date" id="endDate" />
+            </div>
+            <div class="mt">
+              <label>요일 커스텀(쉼표)</label>
+              <input id="customDays" placeholder="MON,WED,FRI" />
+            </div>
           </div>
-          <div>
-            <label>학생</label>
-            <select id="selStudent"></select>
-          </div>
-          <div><label>시작일</label><input type="date" id="startDate" /></div>
-          <div><label>끝 날짜</label><input type="date" id="endDate" /></div>
-          <div>
-            <label>요일 커스텀(쉼표)</label>
-            <input id="customDays" placeholder="MON,WED,FRI" />
-          </div>
-        </div>
-      </section>
+        </section>
+      </div>
 
       <section class="card">
         <div class="card-h">교재 선택</div>
@@ -147,7 +150,6 @@
             </div>
             <div id="laneMain1" class="mt"></div>
           </div>
-
           <div>
             <div class="muted mb">메인 2</div>
             <div class="row">
@@ -156,7 +158,6 @@
             </div>
             <div id="laneMain2" class="mt"></div>
           </div>
-
           <div>
             <div class="muted mb">어휘</div>
             <div class="row">
@@ -188,6 +189,7 @@
           옵션을 선택한 뒤 ‘미리보기’를 눌러주세요.
         </div>
       </section>
+
       <div
         id="skipModal"
         class="no-print"
