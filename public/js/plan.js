@@ -378,20 +378,53 @@ function renderPrintable(items, ctx) {
       ${ctx.startDate} ~ ${ctx.endDate}
     </div>`;
 
-  // 기존 테이블 생성 로직
-  const thead = `<thead><tr><th style="width:110px">날짜</th><th>메인1</th><th>메인2</th><th>어휘</th></tr></thead>`;
+  // [변경] 테이블 헤더를 새로운 복잡한 구조로 변경
+  const thead = `
+    <thead style="font-size: 12px; text-align: center;">
+      <tr>
+        <th rowspan="3" style="width:100px; vertical-align: middle;">날짜</th>
+        <th colspan="5" style="padding: 4px;">메인 1</th>
+        <th colspan="5" style="padding: 4px;">메인 2</th>
+        <th colspan="2" style="padding: 4px;">단어 DT</th>
+      </tr>
+      <tr>
+        <th colspan="3" style="padding: 4px;">수업 진도</th>
+        <th colspan="2" style="padding: 4px;">티칭 챌린지</th>
+        <th colspan="3" style="padding: 4px;">수업 진도</th>
+        <th colspan="2" style="padding: 4px;">티칭 챌린지</th>
+        <th rowspan="2" style="vertical-align: middle; padding: 4px;">회차</th>
+        <th rowspan="2" style="vertical-align: middle; padding: 4px;">DT</th>
+      </tr>
+      <tr>
+        <th style="padding: 4px;">인강</th>
+        <th style="padding: 4px;">교재 page</th>
+        <th style="padding: 4px;">WB</th>
+        <th style="padding: 4px;">개념+단어</th>
+        <th style="padding: 4px;">문장학습</th>
+        <th style="padding: 4px;">인강</th>
+        <th style="padding: 4px;">교재 page</th>
+        <th style="padding: 4px;">WB</th>
+        <th style="padding: 4px;">개념+단어</th>
+        <th style="padding: 4px;">문장학습</th>
+      </tr>
+    </thead>`;
+
+  // [변경] 테이블의 각 행(row)을 새로운 구조에 맞게 생성
   const rows = dates
     .map((d) => {
       const dayItems = items.filter((x) => x.date === d);
       const skip = dayItems.find((x) => x.source === "skip");
       const tests = dayItems.filter((x) => x.source === "test");
       const tag = `data-date="${d}" class="js-date" style="cursor:pointer; text-decoration:underline;"`;
-      if (skip)
-        return `<tr><td ${tag}><b>${d}</b></td><td colspan="3" style="color:#64748b;background:#f8fafc;">${skip.reason}</td></tr>`;
+
+      if (skip) {
+        return `<tr><td ${tag}><b>${d}</b></td><td colspan="12" style="color:#64748b;background:#f8fafc;">${skip.reason}</td></tr>`;
+      }
       if (tests.length) {
         const testContent = tests.map((t) => t.title).join("<br>");
-        return `<tr><td ${tag}><b>${d}</b></td><td colspan="3" style="background: #fffbe6;">${testContent}</td></tr>`;
+        return `<tr><td ${tag}><b>${d}</b></td><td colspan="12" style="background: #fffbe6;">${testContent}</td></tr>`;
       }
+
       const m1 = dayItems.find(
         (x) =>
           x.source === "main" &&
@@ -404,16 +437,26 @@ function renderPrintable(items, ctx) {
           x.material_id &&
           ctx.lanes.main2.some((b) => b.materialId === x.material_id)
       );
-      const vs = dayItems.filter((x) => x.source === "vocab");
-      return `<tr><td ${tag}><b>${d}</b></td><td>${
-        m1 ? formatMain(m1) : ""
-      }</td><td>${m2 ? formatMain(m2) : ""}</td><td>${vs
-        .map(formatVocab)
-        .join("<br>")}</td></tr>`;
+      const v = dayItems.find((x) => x.source === "vocab"); // 어휘는 하루에 하나로 가정
+
+      return `<tr style="text-align: center; font-size: 14px;">
+          <td ${tag}><b>${d}</b></td>
+          <td>${m1?.lecture_range || ""}</td>
+          <td>${m1?.pages ? `p.${m1.pages}` : ""}</td>
+          <td>${m1?.wb ? `p.${m1.wb}` : ""}</td>
+          <td>${m1?.dt_vocab || ""}</td>
+          <td>${m1?.key_sents || ""}</td>
+          <td>${m2?.lecture_range || ""}</td>
+          <td>${m2?.pages ? `p.${m2.pages}` : ""}</td>
+          <td>${m2?.wb ? `p.${m2.wb}` : ""}</td>
+          <td>${m2?.dt_vocab || ""}</td>
+          <td>${m2?.key_sents || ""}</td>
+          <td>${v?.lecture_range || ""}</td>
+          <td>${v?.vocab_range || ""}</td>
+        </tr>`;
     })
     .join("");
 
-  // [변경] 모든 HTML을 조합하여 최종 결과물 출력
   $("#result").innerHTML =
     studentHeader +
     materialsHeaderHtml +
@@ -424,21 +467,6 @@ function renderPrintable(items, ctx) {
   });
 }
 
-function formatMain(it) {
-  const line1 = it.lecture_range || `${it.material_id} ${it.unit_code}`;
-  const line2 = [
-    it.pages && `p.${it.pages}`,
-    it.wb && `WB ${it.wb}`,
-    it.dt_vocab && `단어 ${it.dt_vocab}`,
-    it.key_sents && `문장 ${it.key_sents}`,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-  return [line1, line2].filter(Boolean).join("<br>");
-}
-function formatVocab(it) {
-  return [it.lecture_range, it.vocab_range].filter(Boolean).join(" · ");
-}
 function openSkipModal(date) {
   const modal = $("#skipModal");
   $("#skipDateLabel").textContent = date;
