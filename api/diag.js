@@ -1,4 +1,4 @@
-// api/diag.js
+// /api/diag.js — 전체 교체
 import { google } from "googleapis";
 
 export default async function handler(req, res) {
@@ -10,6 +10,8 @@ export default async function handler(req, res) {
     CLASSES_RANGE: process.env.CLASSES_RANGE || "class!A:Z",
     STUDENTS_RANGE: process.env.STUDENTS_RANGE || "student!A:Z",
     MATERIALS_RANGE: process.env.MATERIALS_RANGE || "material!A:Z",
+    // [추가] tests 시트 환경 변수 확인
+    TESTS_RANGE: process.env.TESTS_RANGE || "tests!A:Z",
   };
 
   const out = { ok: false, env, checks: {}, errors: {} };
@@ -46,10 +48,16 @@ export default async function handler(req, res) {
     out.checks.class = await ping(env.CLASSES_RANGE);
     out.checks.student = await ping(env.STUDENTS_RANGE);
     out.checks.material = await ping(env.MATERIALS_RANGE);
+    // [추가] tests 시트 연결 상태 진단
+    out.checks.tests = await ping(env.TESTS_RANGE);
+
     out.ok = !!(
-      out.checks.class.ok ||
-      out.checks.student.ok ||
-      out.checks.material.ok
+      (
+        out.checks.class.ok ||
+        out.checks.student.ok ||
+        out.checks.material.ok ||
+        out.checks.tests.ok
+      ) // [수정] 진단 성공 여부에 tests 포함
     );
 
     return res.status(200).json(out);

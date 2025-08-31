@@ -7,7 +7,6 @@ export default async function handler(req, res) {
     res.setHeader("Allow", "GET");
     return res.status(405).json({ ok: false });
   }
-  // Vercel에 설정된 환경 변수를 사용합니다.
   const RANGE = process.env.TESTS_RANGE || "tests!A:Z";
   try {
     const rows = await readSheetObjects(RANGE);
@@ -16,7 +15,9 @@ export default async function handler(req, res) {
       name: String(r.name || ""),
     }));
     return res.status(200).json(out);
-  } catch {
-    return res.status(200).json([]);
+  } catch (e) {
+    // 에러 발생 시 빈 배열 대신 에러 메시지를 반환하여 원인 파악을 돕습니다.
+    console.error(e);
+    return res.status(500).json({ error: "tests 시트 읽기 실패" });
   }
 }
