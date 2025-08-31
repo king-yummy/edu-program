@@ -1,4 +1,4 @@
-// /public/js/plan.js — 전체 교체 (최종본)
+// /public/js/plan.js — 최종 수정본
 
 // -------- 공통 유틸 --------
 const $ = (q) => document.querySelector(q);
@@ -96,11 +96,9 @@ async function boot() {
   $("#btnNextMonth").onclick = () => updateMonth(1);
   $("#btnTestAdd")?.addEventListener("click", addTest);
 
-  // 첫 반 선택 강제 실행
   await onClassChange();
 }
 
-// -------- 월 선택 UI 관련 함수 --------
 function renderMonthNavigator() {
   const [year, month] = state.selectedMonth.split("-");
   $("#testMonthDisplay").textContent = `${year}년 ${month}월`;
@@ -117,7 +115,6 @@ function updateMonth(change) {
   reloadTests();
 }
 
-// -------- 반 선택 시 처리 --------
 async function onClassChange() {
   const classId = $("#selClass").value;
   state.selectedClassId = classId;
@@ -142,7 +139,6 @@ async function onClassChange() {
   await reloadTests();
 }
 
-// -------- 교재 Lane 관리 --------
 async function addToLane(lane, materialId) {
   if (!materialId) return;
 
@@ -433,7 +429,6 @@ function renderPrintable(items, ctx) {
       );
       const v = dayItems.find((x) => x.source === "vocab");
 
-      // [변경] OT 교재 처리 로직 (열 통합, 새 스타일)
       const renderMainLane = (mainItem) => {
         if (!mainItem) {
           return `<td></td><td></td><td></td><td></td><td></td>`;
@@ -442,7 +437,7 @@ function renderPrintable(items, ctx) {
           const title =
             state.materials.find((m) => m.material_id === mainItem.material_id)
               ?.title || mainItem.material_id;
-          return `<td colspan="5" style="background: #F9FF00; border: 1px solid red; font-weight: bold; text-align: center;">${title} OT</td>`;
+          return `<td colspan="5" style="background: #F9FF00; border: 1px solid red; font-weight: bold;">${title} OT</td>`;
         }
         return `<td>${mainItem.lecture_range || ""}</td>
                 <td>${mainItem.pages ? `p.${mainItem.pages}` : ""}</td>
@@ -505,7 +500,6 @@ $("#btnSkipDelete")?.addEventListener("click", () => {
 });
 $("#btnSkipClose")?.addEventListener("click", closeSkipModal);
 
-// -------- 시험 CRUD --------
 async function reloadTests() {
   const classId = state.selectedClassId;
   const el = $("#testList");
