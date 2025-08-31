@@ -1,83 +1,135 @@
-// /api/plan.js — 전체 교체
+// /api/plans.js — 신규 파일
 
+import { kv } from "@vercel/kv";
 import { generatePlan } from "../lib/schedule.js";
 import { getAllTests } from "../lib/kv.js";
 
-const toYMD = (d) => {
-  try {
-    return new Date(d).toISOString().slice(0, 10);
-  } catch {
-    return "";
-  }
-};
+// 학생의 모든 플랜을 가져오는 함수
+async function getPlansByStudent(studentId) {
+  if (!studentId) return [];
+  return (await kv.get(`plans:${studentId}`)) || [];
+}
+
+// 학생의 모든 플랜을 저장하는 함수
+async function savePlansForStudent(studentId, plans) {
+  if (!studentId) throw new Error("Student ID is required to save plans.");
+  await kv.set(`plans:${studentId}`, plans);
+}
+
+const toYMD = (d) => d.toISOString().slice(0, 10);
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    res.setHeader("Allow", "POST");
-    return res.status(405).json({ ok: false, error: "Method Not Allowed" });
-  }
+  const { studentId, planId } = req.query;
 
-  let body = {};
-  try {
-    body =
-      typeof req.body === "string"
-        ? JSON.parse(req.body || "{}")
-        : req.body || {};
-  } catch {
-    return res.status(400).json({ ok: false, error: "Invalid JSON body" });
-  }
-
-  const {
-    classId = "",
-    startDate,
-    endDate,
-    days,
-    lanes = {},
-    userSkips = [],
-  } = body;
-
-  if (!startDate) {
-    return res
-      .status(400)
-      .json({ ok: false, error: "startDate required (YYYY-MM-DD)" });
-  }
-  if (!endDate) {
-    return res
-      .status(400)
-      .json({ ok: false, error: "endDate required (YYYY-MM-DD)" });
-  }
-
-  // [핵심 변경] 프론트엔드에서 받은 시험 정보(testsFromBody)를 무시하고,
-  // 서버(KV 저장소)에서 직접 모든 시험 정보를 가져온 뒤, 플랜 기간으로 필터링합니다.
-  let testsInRange = [];
-  try {
-    const allTests = await getAllTests();
-    if (Array.isArray(allTests)) {
-      testsInRange = allTests
-        .filter((t) => String(t.classId) === String(classId))
-        .filter((t) => {
-          const testDate = toYMD(t.date);
-          return testDate >= toYMD(startDate) && testDate <= toYMD(endDate);
-        });
+  // --- GET: 특정 학생의 모든 플랜 조회 ---
+  if (req.method === "GET" && studentId) {
+    try {
+      const plans = await getPlansByStudent(studentId);
+      return res.status(200).json({ ok: true, plans });
+    } catch (e) {
+      return res.status(500).json({ ok: false, error: e.message });
     }
-  } catch {
-    // KV 조회 실패 시 무시
   }
 
-  try {
-    const items = await generatePlan({
-      startDate,
-      endDate,
-      days:
-        typeof days === "string" && days ? days.toUpperCase() : "MON,WED,FRI",
-      lanes,
-      userSkips,
-      tests: testsInRange, // [핵심 변경] 기간에 맞는 시험 정보만 전달
-    });
-    return res.status(200).json({ ok: true, items });
-  } catch (e) {
-    return res
-      .status(500)
-      .json({ ok: false, error: e.message || "plan failed" });
+  // --- POST: 새 플랜 생성 (단일/다수 학생) ---
+  if (req.method === "POST") {
+    try {
+      const body = req.body;
+      const { students, ...planConfig } = body;
+      if (!Array.isArray(students) || students.length === 0) {
+        return res
+          .status(400)
+          .json({ ok: false, error: "Students array is required." });
+      }
+
+      const allTests = await getAllTests();
+      const testsInRange = allTests.filter((t) => {
+        const testDate = new Date(t.date).toISOString().slice(0, 10);
+        return (
+          testDate >= planConfig.startDate && testDate <= planConfig.endDate
+        );
+      });
+
+      const generatedItems = await generatePlan({
+        ...planConfig,
+        tests: testsInRange,
+      });
+
+      for (const student of students) {
+        const studentPlans = await getPlansByStudent(student.id);
+        const newPlan = {
+          planId: `pln_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+          studentId: student.id,
+          createdAt: new Date().toISOString(),
+          context: planConfig,
+          items: generatedItems,
+        };
+        studentPlans.push(newPlan);
+        await savePlansForStudent(student.id, studentPlans);
+      }
+      return res.status(201).json({ ok: true });
+    } catch (e) {
+      return res.status(500).json({ ok: false, error: e.message });
+    }
   }
+
+  // --- PUT: 기존 플랜 수정 ---
+  if (req.method === "PUT" && planId) {
+    try {
+      const body = req.body;
+      const { studentId, ...planConfig } = body;
+      const studentPlans = await getPlansByStudent(studentId);
+      const planIndex = studentPlans.findIndex((p) => p.planId === planId);
+
+      if (planIndex === -1) {
+        return res.status(404).json({ ok: false, error: "Plan not found." });
+      }
+
+      const allTests = await getAllTests();
+      const testsInRange = allTests.filter((t) => {
+        const testDate = new Date(t.date).toISOString().slice(0, 10);
+        return (
+          testDate >= planConfig.startDate && testDate <= planConfig.endDate
+        );
+      });
+
+      const updatedItems = await generatePlan({
+        ...planConfig,
+        tests: testsInRange,
+      });
+
+      studentPlans[planIndex].context = planConfig;
+      studentPlans[planIndex].items = updatedItems;
+      studentPlans[planIndex].updatedAt = new Date().toISOString();
+
+      await savePlansForStudent(studentId, studentPlans);
+      return res.status(200).json({ ok: true, plan: studentPlans[planIndex] });
+    } catch (e) {
+      return res.status(500).json({ ok: false, error: e.message });
+    }
+  }
+
+  // --- DELETE: 기존 플랜 삭제 ---
+  if (req.method === "DELETE" && planId) {
+    try {
+      const { studentId } = req.query;
+      let studentPlans = await getPlansByStudent(studentId);
+      const initialLength = studentPlans.length;
+      studentPlans = studentPlans.filter((p) => p.planId !== planId);
+
+      if (studentPlans.length === initialLength) {
+        return res.status(404).json({ ok: false, error: "Plan not found." });
+      }
+
+      await savePlansForStudent(studentId, studentPlans);
+      return res.status(200).json({ ok: true });
+    } catch (e) {
+      return res.status(500).json({ ok: false, error: e.message });
+    }
+  }
+
+  res.setHeader("Allow", ["GET", "POST", "PUT", "DELETE"]);
+  return res
+    .status(405)
+    .json({ ok: false, error: `Method ${req.method} Not Allowed` });
 }
