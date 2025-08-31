@@ -1,5 +1,4 @@
-// /public/js/plan.js  — 전체 교체본
-
+// /public/js/plan.js — 전체 교체
 // -------- 공통 유틸 --------
 const $ = (q) => document.querySelector(q);
 const api = async (path, opt) => {
@@ -23,6 +22,7 @@ const state = {
   classTestName: "",
   selectedClassId: "",
   tests: [],
+  testsMaster: [], // [추가] 시험 마스터 목록 저장
 };
 
 // -------- 부트스트랩 --------
@@ -39,7 +39,7 @@ async function boot() {
   $("#selClass").onchange = onClassChange;
   await onClassChange();
 
-  // 교재 목록
+  // 교재 목록 (기존 /api/materials 경로 오류 수정)
   const mats = await api("/api/materials");
   state.materials = mats;
   const mains = mats.filter((m) => String(m.type).toUpperCase() === "MAIN");
@@ -52,6 +52,20 @@ async function boot() {
   $("#selMain1").innerHTML = opt(mains);
   $("#selMain2").innerHTML = opt(mains);
   $("#selVocab").innerHTML = opt(vocs);
+
+  // [핵심] 시험 마스터 목록 로드 및 드롭다운 채우기
+  try {
+    state.testsMaster = await api("/api/tests-master");
+    if (Array.isArray(state.testsMaster)) {
+      $("#newTestTitle").innerHTML =
+        `<option value="">시험 선택</option>` +
+        state.testsMaster
+          .map((t) => `<option value="${t.name}">${t.name}</option>`)
+          .join("");
+    }
+  } catch (e) {
+    console.error("시험 목록을 불러오는데 실패했습니다.", e);
+  }
 
   // 버튼
   $("#btnAddMain1").onclick = () => addToLane("main1", $("#selMain1").value);
@@ -262,6 +276,7 @@ async function previewPlan() {
     lanes,
     userSkips,
     testName: state.classTestName,
+    tests: state.tests, // [수정] 미리보기 생성 시 저장된 시험 정보 함께 전송
   };
 
   const res = await api("/api/plan", {
@@ -293,7 +308,7 @@ function renderPrintable(items, ctx) {
     .map((d) => {
       const dayItems = items.filter((x) => x.date === d);
       const skip = dayItems.find((x) => x.source === "skip");
-      const test = dayItems.find((x) => x.source === "test");
+      const tests = dayItems.filter((x) => x.source === "test"); // [수정] 하루에 여러 시험이 있을 수 있음
       const tag = `data-date="${d}" class="js-date" style="cursor:pointer; text-decoration:underline;"`;
 
       if (skip) {
@@ -303,12 +318,12 @@ function renderPrintable(items, ctx) {
       </tr>`;
       }
 
-      if (test) {
+      if (tests.length > 0) {
+        // [수정] 시험 렌더링 방식 변경
+        const testContent = tests.map((t) => `${t.title}`).join("<br>");
         return `<tr>
         <td ${tag}><b>${d}</b></td>
-        <td>${test.title}</td>
-        <td>풀이 및 오답</td>
-        <td></td>
+        <td colspan="3" style="background: #fffbe6;">${testContent}</td>
       </tr>`;
       }
 
@@ -449,7 +464,7 @@ async function addTest() {
   const date = $("#newTestDate").value;
   const title = $("#newTestTitle").value.trim();
   const materialId = $("#newTestMaterial").value.trim();
-  if (!date || !title) return alert("날짜와 시험명을 입력하세요.");
+  if (!date || !title) return alert("날짜와 시험명을 선택하세요.");
 
   const r = await api(
     `/api/class-tests?classId=${encodeURIComponent(classId)}`,
@@ -491,3 +506,7 @@ async function deleteTest(id) {
   if (!r.ok) return alert(r.error || "삭제 실패");
   await reloadTests();
 }
+
+// updateTest와 deleteTest를 전역 스코프에 노출시켜 HTML에서 직접 호출할 수 있도록 합니다.
+window.updateTest = updateTest;
+window.deleteTest = deleteTest;
