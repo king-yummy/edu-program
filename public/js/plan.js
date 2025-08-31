@@ -147,7 +147,6 @@ async function onClassChange() {
 async function addToLane(lane, materialId) {
   if (!materialId) return;
 
-  // [변경] 중복 추가를 허용하기 위해 고유 ID 생성
   const instanceId = `inst_${Date.now()}_${Math.random()
     .toString(36)
     .slice(2, 7)}`;
@@ -162,7 +161,6 @@ async function addToLane(lane, materialId) {
   if (!Array.isArray(units) || !units.length)
     return alert("해당 교재의 차시가 없습니다.");
 
-  // [변경] 기본값으로 첫 차시와 마지막 차시를 설정
   state.lanes[lane].push({
     instanceId,
     materialId,
@@ -283,7 +281,6 @@ function renderLane(lane) {
   });
 }
 
-// 전역에서 버튼이 접근할 수 있게 노출 (instanceId 사용하도록 변경됨)
 window.removeFromLane = removeFromLane;
 window.move = move;
 
@@ -298,7 +295,6 @@ async function previewPlan() {
 
   const lanes = {};
   for (const ln of ["main1", "main2", "vocab"]) {
-    // [변경] 모든 교재의 시작/종료 차시 정보를 포함하여 전송
     lanes[ln] = state.lanes[ln].map((b) => ({
       materialId: b.materialId,
       startUnitCode: b.startUnitCode,
@@ -341,7 +337,6 @@ async function previewPlan() {
 function renderPrintable(items, ctx) {
   const dates = [...new Set(items.map((i) => i.date))].sort();
 
-  // [추가] 1. 플랜에 사용된 메인 교재 ID 목록 추출
   const usedMainMaterialIds = [
     ...new Set(
       items
@@ -350,12 +345,10 @@ function renderPrintable(items, ctx) {
     ),
   ];
 
-  // [추가] 2. 교재 ID를 이용해 전체 정보 (title, lecture) 조회
   const usedMaterials = usedMainMaterialIds
     .map((id) => state.materials.find((m) => m.material_id === id))
-    .filter(Boolean); // 혹시 모를 null 값 제거
+    .filter(Boolean);
 
-  // [추가] 3. 교재 정보 헤더 HTML 생성
   const materialsHeaderHtml = `
     <div class="materials-header">
       ${usedMaterials
@@ -371,14 +364,12 @@ function renderPrintable(items, ctx) {
     </div>
   `;
 
-  // 기존 학생 정보 헤더
   const studentHeader = `
     <div style="margin-bottom:12px;">
       <b>${ctx.studentName}</b> /
       ${ctx.startDate} ~ ${ctx.endDate}
     </div>`;
 
-  // [변경] 테이블 헤더를 새로운 복잡한 구조로 변경
   const thead = `
     <thead style="font-size: 12px; text-align: center;">
       <tr>
@@ -409,20 +400,25 @@ function renderPrintable(items, ctx) {
       </tr>
     </thead>`;
 
-  // [변경] 테이블의 각 행(row)을 새로운 구조에 맞게 생성
   const rows = dates
     .map((d) => {
       const dayItems = items.filter((x) => x.date === d);
       const skip = dayItems.find((x) => x.source === "skip");
       const tests = dayItems.filter((x) => x.source === "test");
+
+      // [변경] 날짜 형식 (YY.MM.DD (요일))
+      const DOW_KR = ["일", "월", "화", "수", "목", "금", "토"];
+      const dateObj = new Date(d + "T00:00:00Z"); // UTC 기준으로 날짜 해석
+      const dayName = DOW_KR[dateObj.getUTCDay()];
+      const dateString = `${d.slice(2).replace(/-/g, ".")} (${dayName})`;
       const tag = `data-date="${d}" class="js-date" style="cursor:pointer; text-decoration:underline;"`;
 
       if (skip) {
-        return `<tr><td ${tag}><b>${d}</b></td><td colspan="12" style="color:#64748b;background:#f8fafc;">${skip.reason}</td></tr>`;
+        return `<tr><td ${tag}><b>${dateString}</b></td><td colspan="12" style="color:#64748b;background:#f8fafc;">${skip.reason}</td></tr>`;
       }
       if (tests.length) {
         const testContent = tests.map((t) => t.title).join("<br>");
-        return `<tr><td ${tag}><b>${d}</b></td><td colspan="12" style="background: #fffbe6;">${testContent}</td></tr>`;
+        return `<tr><td ${tag}><b>${dateString}</b></td><td colspan="12" style="background: #fffbe6;">${testContent}</td></tr>`;
       }
 
       const m1 = dayItems.find(
@@ -437,20 +433,34 @@ function renderPrintable(items, ctx) {
           x.material_id &&
           ctx.lanes.main2.some((b) => b.materialId === x.material_id)
       );
-      const v = dayItems.find((x) => x.source === "vocab"); // 어휘는 하루에 하나로 가정
+      const v = dayItems.find((x) => x.source === "vocab");
+
+      // [변경] OT 교재 처리 로직
+      const renderMainLane = (mainItem) => {
+        if (!mainItem) {
+          return `<td></td><td></td><td></td><td></td><td></td>`;
+        }
+        if (mainItem.isOT) {
+          const title =
+            state.materials.find((m) => m.material_id === mainItem.material_id)
+              ?.title || mainItem.material_id;
+          const otBg = `style="background: #fffde7;"`;
+          return `<td ${otBg}><b style="padding-left: 5px;">${title} OT</b></td><td ${otBg}></td><td ${otBg}></td><td ${otBg}></td><td ${otBg}></td>`;
+        }
+        return `<td>${mainItem.lecture_range || ""}</td>
+                <td>${mainItem.pages ? `p.${mainItem.pages}` : ""}</td>
+                <td>${mainItem.wb ? `p.${mainItem.wb}` : ""}</td>
+                <td>${mainItem.dt_vocab || ""}</td>
+                <td>${mainItem.key_sents || ""}</td>`;
+      };
+
+      const m1_html = renderMainLane(m1);
+      const m2_html = renderMainLane(m2);
 
       return `<tr style="text-align: center; font-size: 14px;">
-          <td ${tag}><b>${d}</b></td>
-          <td>${m1?.lecture_range || ""}</td>
-          <td>${m1?.pages ? `p.${m1.pages}` : ""}</td>
-          <td>${m1?.wb ? `p.${m1.wb}` : ""}</td>
-          <td>${m1?.dt_vocab || ""}</td>
-          <td>${m1?.key_sents || ""}</td>
-          <td>${m2?.lecture_range || ""}</td>
-          <td>${m2?.pages ? `p.${m2.pages}` : ""}</td>
-          <td>${m2?.wb ? `p.${m2.wb}` : ""}</td>
-          <td>${m2?.dt_vocab || ""}</td>
-          <td>${m2?.key_sents || ""}</td>
+          <td ${tag}><b>${dateString}</b></td>
+          ${m1_html}
+          ${m2_html}
           <td>${v?.lecture_range || ""}</td>
           <td>${v?.vocab_range || ""}</td>
         </tr>`;
@@ -611,7 +621,6 @@ async function deleteTest(id) {
   await reloadTests();
 }
 
-// 전역 스코프에 노출
 window.editTest = editTest;
 window.updateTest = updateTest;
 window.deleteTest = deleteTest;
