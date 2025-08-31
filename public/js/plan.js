@@ -9,7 +9,6 @@ const api = async (path, opt) => {
       .catch(() => ({ error: "API 요청 실패" }));
     throw new Error(errorBody.error || `${res.status} ${res.statusText}`);
   }
-  // 내용이 없는 성공 응답(e.g., 204 No Content from DELETE) 처리
   if (res.status === 204) return { ok: true };
   return res.json();
 };
@@ -23,16 +22,15 @@ const state = {
   tests: [],
   testsMaster: [],
   selectedMonth: "",
-  // [추가] 새로운 상태 관리
   selectedStudentIds: new Set(),
-  selectedStudentName: "", // 단일 선택 시 이름 저장
+  selectedStudentName: "",
   editingPlanId: null,
 };
 
 document.addEventListener("DOMContentLoaded", boot);
 
 async function boot() {
-  // --- 기존 초기화 로직 (수정 없음) ---
+  // --- 기존 초기화 로직 ---
   state.classes = await api("/api/class");
   const classOptions = state.classes
     .map(
@@ -71,7 +69,6 @@ async function boot() {
   // --- 이벤트 핸들러 연결 ---
   $("#selClass").onchange = onClassChange;
   $("#selClassInfo").onchange = (e) => {
-    // 이 부분은 유지
     $("#selClass").value = e.target.value;
     onClassChange();
   };
@@ -80,7 +77,6 @@ async function boot() {
   $("#btnAddMain2").onclick = () => addToLane("main2", $("#selMain2").value);
   $("#btnAddVocab").onclick = () => addToLane("vocab", $("#selVocab").value);
 
-  // [수정] 버튼 이벤트 핸들러 변경/추가
   $("#btnPreview").onclick = previewPlan;
   $("#btnSave").onclick = savePlan;
   $("#btnPrint").onclick = () => window.print();
@@ -98,7 +94,8 @@ async function boot() {
   $("#btnNextMonth").onclick = () => updateMonth(1);
   $("#btnTestAdd")?.addEventListener("click", addTest);
 
-  // [추가] 모달 이벤트 핸들러
+  // [수정] 모달/관리 버튼 이벤트 핸들러
+  $("#btnManagePlans").onclick = openPlanActionModalForSelectedStudent;
   $("#btnAddNewPlan").onclick = () => {
     closePlanActionModal();
     clearPlanSettings();
@@ -108,9 +105,7 @@ async function boot() {
     $("#btnSave").textContent = "저장하기";
   };
   $("#btnCancelModal").onclick = () => {
-    state.selectedStudentIds.clear();
-    renderStudentSelection(); // 체크박스 선택 해제
-    onStudentSelectionChange(); // 상태 초기화
+    // 모달만 닫고 선택 상태는 유지
     closePlanActionModal();
   };
 
@@ -118,7 +113,6 @@ async function boot() {
 }
 
 // --- UI 렌더링 및 상태 관리 함수 ---
-
 function clearPlanSettings() {
   state.lanes = { main1: [], main2: [], vocab: [] };
   renderLane("main1");
@@ -153,14 +147,15 @@ function renderStudentSelection() {
 }
 
 // --- 핵심 로직: 반/학생 변경 ---
-
 async function onClassChange() {
+  // ... (기존 onClassChange 함수와 거의 동일)
   const classId = $("#selClass").value;
   state.selectedClassId = classId;
   $("#selClassInfo").value = classId;
   clearPlanSettings();
   state.selectedStudentIds.clear();
   updateStatusMessage("", false);
+  $("#btnManagePlans").style.display = "none";
 
   const studentListEl = $("#studentList");
   studentListEl.innerHTML = "";
@@ -174,7 +169,6 @@ async function onClassChange() {
   const students = res?.students || [];
 
   if (students.length > 0) {
-    // [수정] 학생별 플랜 유무를 확인하여 렌더링
     const planChecks = await Promise.all(
       students.map((s) =>
         api(`/api/plans?studentId=${s.id}`)
@@ -189,7 +183,7 @@ async function onClassChange() {
         <label style="display: block; padding: 4px; border-radius: 8px; cursor: pointer;">
           <input type="checkbox" name="student" value="${s.id}" data-name="${
           s.name
-        }">
+        }" data-has-plan="${planChecks[i]}">
           ${s.name} (${s.school} ${s.grade}) ${planChecks[i] ? "💾" : ""}
         </label>`
       )
@@ -199,11 +193,8 @@ async function onClassChange() {
       .querySelectorAll('input[name="student"]')
       .forEach((checkbox) => {
         checkbox.onchange = (e) => {
-          if (e.target.checked) {
-            state.selectedStudentIds.add(e.target.value);
-          } else {
-            state.selectedStudentIds.delete(e.target.value);
-          }
+          if (e.target.checked) state.selectedStudentIds.add(e.target.value);
+          else state.selectedStudentIds.delete(e.target.value);
           onStudentSelectionChange();
         };
       });
@@ -213,10 +204,14 @@ async function onClassChange() {
   await reloadTests();
 }
 
+// [대규모 수정] onStudentSelectionChange 로직 변경
 async function onStudentSelectionChange() {
   const count = state.selectedStudentIds.size;
   const studentIds = Array.from(state.selectedStudentIds);
   const saveButton = $("#btnSave");
+  const manageButton = $("#btnManagePlans");
+
+  manageButton.style.display = "none"; // 기본적으로 관리 버튼은 숨김
 
   if (count === 0) {
     updateStatusMessage("", false);
@@ -230,7 +225,7 @@ async function onStudentSelectionChange() {
       .map((id) => $(`#studentList input[value="${id}"]`).dataset.name)
       .join(", ");
     updateStatusMessage(
-      `📝 ${studentNames} 학생들의 공통 플랜을 새로 생성합니다.`
+      `📝 ${studentNames} 학생들의 새 공통 플랜을 생성합니다.`
     );
     saveButton.textContent = "저장하기";
     clearPlanSettings();
@@ -239,29 +234,43 @@ async function onStudentSelectionChange() {
 
   if (count === 1) {
     const studentId = studentIds[0];
-    const studentName = $(`#studentList input[value="${studentId}"]`).dataset
-      .name;
+    const checkbox = $(`#studentList input[value="${studentId}"]`);
+    const studentName = checkbox.dataset.name;
+    const hasPlan = checkbox.dataset.hasPlan === "true";
+
     state.selectedStudentName = studentName;
 
-    try {
-      const res = await api(`/api/plans?studentId=${studentId}`);
-      if (res.plans && res.plans.length > 0) {
-        openPlanActionModal(studentName, res.plans);
-      } else {
-        updateStatusMessage(`📝 ${studentName} 학생의 플랜을 새로 생성합니다.`);
-        saveButton.textContent = "저장하기";
-        clearPlanSettings();
-      }
-    } catch (e) {
-      console.error("플랜 조회 실패:", e);
-      alert(`학생 플랜을 불러오는 중 오류가 발생했습니다: ${e.message}`);
+    if (hasPlan) {
+      manageButton.style.display = "block"; // 저장된 플랜이 있으면 관리 버튼 표시
+      updateStatusMessage(
+        `ℹ️ ${studentName} 학생의 기존 플랜을 관리하거나, 새 플랜을 만들 수 있습니다.`
+      );
+      saveButton.textContent = "새 플랜 저장하기";
+    } else {
+      updateStatusMessage(`📝 ${studentName} 학생의 새 플랜을 생성합니다.`);
+      saveButton.textContent = "저장하기";
     }
+    clearPlanSettings(); // 1명 선택 시 항상 설정은 초기화
   }
 }
 
 // --- 모달 관리 ---
+async function openPlanActionModalForSelectedStudent() {
+  const studentId = Array.from(state.selectedStudentIds)[0];
+  if (!studentId) return;
+
+  try {
+    const studentName = $(`#studentList input[value="${studentId}"]`).dataset
+      .name;
+    const res = await api(`/api/plans?studentId=${studentId}`);
+    openPlanActionModal(studentName, res.plans);
+  } catch (e) {
+    alert(`플랜 조회 실패: ${e.message}`);
+  }
+}
 
 function openPlanActionModal(studentName, plans) {
+  // ... 기존과 동일 ...
   $("#modalStudentName").textContent = `${studentName} 학생 플랜 관리`;
   const listEl = $("#existingPlansList");
   listEl.innerHTML =
@@ -287,13 +296,13 @@ function closePlanActionModal() {
   $("#planActionModal").style.display = "none";
 }
 
+// loadPlanForEditing, deletePlan 함수는 이전과 동일합니다.
 async function loadPlanForEditing(planId, studentId) {
   try {
     const res = await api(`/api/plans?studentId=${studentId}`);
     const plan = res.plans.find((p) => p.planId === planId);
     if (!plan) throw new Error("플랜을 찾을 수 없습니다.");
 
-    // --- [핵심 수정] 교재 상세 정보를 다시 불러와서 state.lanes를 재구성 ---
     const lanesConfig = plan.context.lanes || {
       main1: [],
       main2: [],
@@ -330,14 +339,11 @@ async function loadPlanForEditing(planId, studentId) {
       }
     }
     state.lanes = reconstructedLanes;
-    // --- 수정 끝 ---
 
-    // UI 채우기
     $("#startDate").value = plan.context.startDate;
     $("#endDate").value = plan.context.endDate;
     $("#customDays").value = plan.context.days;
 
-    // 재구성된 lanes를 화면에 렌더링
     renderLane("main1");
     renderLane("main2");
     renderLane("vocab");
@@ -348,9 +354,9 @@ async function loadPlanForEditing(planId, studentId) {
     }, {});
 
     state.editingPlanId = planId;
-    $("#btnSave").textContent = "수정하기";
+    $("#btnSave").textContent = "수정 내용 저장";
     updateStatusMessage(
-      `🔄 ${state.selectedStudentName} 학생의 플랜을 수정합니다.`
+      `🔄 ${state.selectedStudentName} 학생의 플랜을 수정합니다. (${plan.context.startDate} ~ ${plan.context.endDate})`
     );
     closePlanActionModal();
   } catch (e) {
@@ -366,8 +372,8 @@ async function deletePlan(planId, studentId) {
     });
     alert("플랜이 삭제되었습니다.");
     closePlanActionModal();
-    await onClassChange(); // 목록 새로고침
-    state.selectedStudentIds.clear(); // 선택 초기화
+    await onClassChange();
+    state.selectedStudentIds.clear();
     onStudentSelectionChange();
   } catch (e) {
     alert(`삭제 실패: ${e.message}`);
@@ -376,8 +382,8 @@ async function deletePlan(planId, studentId) {
 window.loadPlanForEditing = loadPlanForEditing;
 window.deletePlan = deletePlan;
 
-// --- 저장 및 미리보기 ---
-
+// --- 저장 및 미리보기 (기존과 동일) ---
+// ... savePlan, previewPlan, renderPrintable 등 나머지 모든 함수는 이전 버전과 동일하게 유지 ...
 async function savePlan() {
   const studentIds = Array.from(state.selectedStudentIds);
   if (studentIds.length === 0) return alert("저장할 학생을 선택하세요.");
@@ -442,7 +448,7 @@ async function savePlan() {
       });
       alert("플랜이 성공적으로 저장되었습니다.");
     }
-    await onClassChange(); // 성공 후 목록 새로고침
+    await onClassChange();
     state.selectedStudentIds.clear();
     onStudentSelectionChange();
   } catch (e) {
@@ -490,33 +496,22 @@ async function previewPlan() {
 
   try {
     const res = await api("/api/plan", {
-      // 미리보기는 기존 /api/plan 사용
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
     if (!res.ok) throw new Error(res.error);
-
-    // [수정] 여러 학생의 이름을 표시하도록 렌더링 함수 호출
     renderPrintable(res.items, { studentNames, startDate, endDate });
   } catch (e) {
     $("#result").textContent = `생성 실패: ${e.message}`;
   }
 }
 
-// [수정] 여러 학생 이름을 받을 수 있도록 renderPrintable 수정
 function renderPrintable(items, ctx) {
   const dates = [...new Set(items.map((i) => i.date))].sort();
-  // ... (materialsHeaderHtml 로직은 기존과 동일) ...
-
-  // [수정] 학생 이름 헤더
   const studentHeader = `<div style="margin-bottom:12px;"><b>${ctx.studentNames.join(
     ", "
   )}</b> / ${ctx.startDate} ~ ${ctx.endDate}</div>`;
-
-  // ... (thead, rows 생성 로직은 기존과 거의 동일) ...
-  // ... (나머지 renderPrintable 함수 내용은 기존과 동일) ...
-
   const usedMainMaterialIds = [
     ...new Set(
       items
@@ -537,7 +532,6 @@ function renderPrintable(items, ctx) {
         }</div></div>`
     )
     .join("")}</div>`;
-
   const thead = `
     <thead style="font-size: 12px; text-align: center;">
       <tr>
@@ -550,7 +544,6 @@ function renderPrintable(items, ctx) {
         <th rowspan="2" style="vertical-align: middle;">회차</th> <th rowspan="2" style="vertical-align: middle;">DT</th>
       </tr>
       <tr>
-        <th>인강</th><th>교재 page</th><th>WB</th><th>개념+단어</th><th>문장학습</th>
         <th>인강</th><th>교재 page</th><th>WB</th><th>개념+단어</th><th>문장학습</th>
       </tr>
     </thead>`;
@@ -584,22 +577,18 @@ function renderPrintable(items, ctx) {
         const title =
           state.materials.find((m) => m.material_id === mainItem.material_id)
             ?.title || mainItem.material_id;
-        if (mainItem.isOT) {
+        if (mainItem.isOT)
           return `<td colspan="5" style="background: #F9FF00; border: 1px solid red; font-weight: bold;">"${title}" OT</td>`;
-        }
-        if (mainItem.isReturn) {
+        if (mainItem.isReturn)
           return `<td colspan="5" style="background: #e0f2fe; border: 1px solid #0ea5e9; font-weight: bold;">"${title}" 복귀</td>`;
-        }
         return `<td>${mainItem.lecture_range || ""}</td><td>${
           mainItem.pages ? `p.${mainItem.pages}` : ""
         }</td><td>${mainItem.wb ? `p.${mainItem.wb}` : ""}</td><td>${
           mainItem.dt_vocab || ""
         }</td><td>${mainItem.key_sents || ""}</td>`;
       };
-
       const m1_html = renderMainLane(m1);
       const m2_html = renderMainLane(m2);
-
       return `<tr style="font-size: 14px;"><td ${tag}>${dateString}</td>${m1_html}${m2_html}<td>${
         v?.lecture_range || ""
       }</td><td>${v?.vocab_range || ""}</td></tr>`;
@@ -612,8 +601,6 @@ function renderPrintable(items, ctx) {
     el.onclick = () => openSkipModal(el.getAttribute("data-date"));
   });
 }
-
-// --- 기존 함수들 (수정 없음) ---
 
 async function addToLane(lane, materialId) {
   if (!materialId) return;
@@ -639,14 +626,12 @@ async function addToLane(lane, materialId) {
   });
   renderLane(lane);
 }
-
 function removeFromLane(lane, instanceId) {
   state.lanes[lane] = state.lanes[lane].filter(
     (x) => x.instanceId !== instanceId
   );
   renderLane(lane);
 }
-
 function move(lane, instanceId, dir) {
   const arr = state.lanes[lane];
   const i = arr.findIndex((x) => x.instanceId === instanceId);
@@ -658,7 +643,6 @@ function move(lane, instanceId, dir) {
 }
 window.removeFromLane = removeFromLane;
 window.move = move;
-
 function renderLane(lane) {
   const box =
     lane === "main1"
@@ -731,7 +715,6 @@ function renderLane(lane) {
     };
   });
 }
-
 function openSkipModal(date) {
   const modal = $("#skipModal");
   $("#skipDateLabel").textContent = date;
@@ -742,7 +725,6 @@ function openSkipModal(date) {
 function closeSkipModal() {
   $("#skipModal").style.display = "none";
 }
-
 ["vacation", "sick", "other"].forEach((t) => {
   const btn = document.querySelector(`#skipModal [data-sel='${t}']`);
   if (btn)
@@ -763,12 +745,10 @@ $("#btnSkipDelete")?.addEventListener("click", () => {
   previewPlan();
 });
 $("#btnSkipClose")?.addEventListener("click", closeSkipModal);
-
 function renderMonthNavigator() {
   const [year, month] = state.selectedMonth.split("-");
   $("#testMonthDisplay").textContent = `${year}년 ${month}월`;
 }
-
 function updateMonth(change) {
   const d = new Date(state.selectedMonth + "-01");
   d.setMonth(d.getMonth() + change);
@@ -779,7 +759,6 @@ function updateMonth(change) {
   renderMonthNavigator();
   reloadTests();
 }
-
 async function reloadTests() {
   const classId = state.selectedClassId;
   const el = $("#testList");
@@ -796,7 +775,6 @@ async function reloadTests() {
   state.tests = (r && r.items) || [];
   renderTests();
 }
-
 function renderTests() {
   const el = $("#testList");
   if (!el) return;
@@ -821,7 +799,6 @@ function renderTests() {
     )
     .join("");
 }
-
 function editTest(id) {
   const item = $(`.test-item[data-id='${id}']`);
   if (!item) return;
