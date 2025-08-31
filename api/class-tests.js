@@ -30,14 +30,6 @@ export default async function handler(req, res) {
         .json({ ok: false, error: "date & title required" });
 
     const all = await getAllTests();
-    const mm = String(date).slice(0, 7);
-    const count = all.filter(
-      (t) => t.classId === String(classId) && String(t.date).slice(0, 7) === mm
-    ).length;
-    if (count >= 2)
-      return res
-        .status(400)
-        .json({ ok: false, error: "max 2 tests per month" });
 
     const item = {
       id: "T" + Math.random().toString(36).slice(2, 9),

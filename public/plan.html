@@ -71,26 +71,17 @@
           <button id="btnTestReload" class="btn">불러오기</button>
         </div>
 
-        <div class="row">
-          <label>시험 일정 (월 0~2회)</label>
-          <div id="testList"></div>
-          <div style="margin-top: 8px">
-            <input type="date" id="newTestDate" />
-            <input
-              type="text"
-              id="newTestTitle"
-              placeholder="시험명 (예: Monthly Test 1)"
-            />
-            <input
-              type="text"
-              id="newTestMaterial"
-              placeholder="materialId (선택)"
-            />
-            <button id="btnTestAdd" class="btn">추가</button>
-          </div>
-          <small style="color: var(--muted)"
-            >* 같은 달에 최대 2개까지 저장됩니다.</small
-          >
+        <div style="margin-top: 8px">
+          <input type="date" id="newTestDate" />
+          <select id="newTestTitle">
+            <option value="">시험 선택</option>
+          </select>
+          <input
+            type="text"
+            id="newTestMaterial"
+            placeholder="materialId (선택)"
+          />
+          <button id="btnTestAdd" class="btn">추가</button>
         </div>
       </section>
 

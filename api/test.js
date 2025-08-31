@@ -19,23 +19,6 @@ export default async function handler(req, res) {
         : req.body || {};
     const next = { ...all[i], ...body };
 
-    // 월 2회 제한 재검사(날짜 바뀔 때)
-    if (
-      body.date &&
-      String(body.date).slice(0, 7) !== String(all[i].date).slice(0, 7)
-    ) {
-      const mm = String(body.date).slice(0, 7);
-      const cnt = all.filter(
-        (t) =>
-          t.classId === next.classId &&
-          String(t.date).slice(0, 7) === mm &&
-          t.id !== id
-      ).length;
-      if (cnt >= 2)
-        return res
-          .status(400)
-          .json({ ok: false, error: "max 2 tests per month" });
-    }
     all[i] = next;
     await putAllTests(all);
     return res.status(200).json({ ok: true, item: all[i] });
