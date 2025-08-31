@@ -88,6 +88,33 @@
         color: var(--muted);
         margin-top: 4px;
       }
+
+      /* [추가] 2중 헤더 테이블 스타일 */
+      .table th,
+      .table td {
+        border-right: 1px solid var(--border);
+        border-bottom: 1px solid var(--border);
+        padding: 6px 8px;
+        font-size: 13px;
+        vertical-align: middle;
+        text-align: center;
+      }
+      .table th:first-child,
+      .table td:first-child {
+        text-align: left;
+        padding-left: 10px;
+      }
+      .table th:last-child,
+      .table td:last-child {
+        border-right: 0;
+      }
+      .table thead th {
+        background: #f1f5f9;
+        font-weight: bold;
+      }
+      .table .sub-header th {
+        background: #f8fafc;
+      }
     </style>
   </head>
   <body>
