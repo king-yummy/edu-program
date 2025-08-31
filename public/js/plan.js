@@ -143,11 +143,14 @@ async function onClassChange() {
   await reloadTests();
 }
 
-// (이하 교재 Lane, 플랜 생성, 스킵 모달 함수는 이전과 동일)
+// -------- 교재 Lane 관리 --------
 async function addToLane(lane, materialId) {
   if (!materialId) return;
-  const exists = state.lanes[lane].some((x) => x.materialId === materialId);
-  if (exists) return alert("이미 추가된 교재입니다.");
+
+  // [변경] 중복 추가를 허용하기 위해 고유 ID 생성
+  const instanceId = `inst_${Date.now()}_${Math.random()
+    .toString(36)
+    .slice(2, 7)}`;
   const title =
     (state.materials.find((m) => m.material_id === materialId) || {}).title ||
     materialId;
@@ -155,31 +158,39 @@ async function addToLane(lane, materialId) {
     lane === "vocab"
       ? await api(`/api/vocaBook?materialId=${encodeURIComponent(materialId)}`)
       : await api(`/api/mainBook?materialId=${encodeURIComponent(materialId)}`);
+
   if (!Array.isArray(units) || !units.length)
     return alert("해당 교재의 차시가 없습니다.");
+
+  // [변경] 기본값으로 첫 차시와 마지막 차시를 설정
   state.lanes[lane].push({
+    instanceId,
     materialId,
     title,
     units,
     startUnitCode: units[0].unit_code,
+    endUnitCode: units[units.length - 1].unit_code,
   });
   renderLane(lane);
 }
-function removeFromLane(lane, materialId) {
+
+function removeFromLane(lane, instanceId) {
   state.lanes[lane] = state.lanes[lane].filter(
-    (x) => x.materialId !== materialId
+    (x) => x.instanceId !== instanceId
   );
   renderLane(lane);
 }
-function move(lane, materialId, dir) {
+
+function move(lane, instanceId, dir) {
   const arr = state.lanes[lane];
-  const i = arr.findIndex((x) => x.materialId === materialId);
+  const i = arr.findIndex((x) => x.instanceId === instanceId);
   if (i < 0) return;
   const j = i + dir;
   if (j < 0 || j >= arr.length) return;
   [arr[i], arr[j]] = [arr[j], arr[i]];
   renderLane(lane);
 }
+
 function renderLane(lane) {
   const box =
     lane === "main1"
@@ -192,53 +203,94 @@ function renderLane(lane) {
     box.innerHTML = `<div class="small muted">책을 추가하세요.</div>`;
     return;
   }
+
+  // [변경] 모든 교재 카드에 시작/종료 차시 UI를 렌더링
   box.innerHTML = arr
-    .map(
-      (b, i) => `
-    <div class="book-card">
-      <div class="book-head">
-        <div><b>${b.title}</b> <span class="small">(${
-        b.materialId
-      })</span></div>
-        <div class="no-print">
-          <button onclick="move('${lane}','${b.materialId}',-1)">▲</button>
-          <button onclick="move('${lane}','${b.materialId}', 1)">▼</button>
-          <button onclick="removeFromLane('${lane}','${
-        b.materialId
-      }')">삭제</button>
+    .map((b) => {
+      const startIndex = b.units.findIndex(
+        (u) => u.unit_code === b.startUnitCode
+      );
+
+      const startOptions = b.units
+        .map(
+          (u) =>
+            `<option value="${u.unit_code}" ${
+              u.unit_code === b.startUnitCode ? "selected" : ""
+            }>
+          ${u.unit_code} — ${u.lecture_range || u.title || ""}
+        </option>`
+        )
+        .join("");
+
+      // 종료 차시는 시작 차시 이후의 유닛만 선택 가능하도록 필터링
+      const endOptions = b.units
+        .slice(startIndex)
+        .map(
+          (u) =>
+            `<option value="${u.unit_code}" ${
+              u.unit_code === b.endUnitCode ? "selected" : ""
+            }>
+          ${u.unit_code} — ${u.lecture_range || u.title || ""}
+        </option>`
+        )
+        .join("");
+
+      return `
+      <div class="book-card">
+        <div class="book-head">
+          <div><b>${b.title}</b> <span class="small">(${b.materialId})</span></div>
+          <div class="no-print">
+            <button onclick="move('${lane}','${b.instanceId}',-1)">▲</button>
+            <button onclick="move('${lane}','${b.instanceId}', 1)">▼</button>
+            <button onclick="removeFromLane('${lane}','${b.instanceId}')">삭제</button>
+          </div>
+        </div>
+        <div class="row mt">
+          <div style="flex:1">
+            <label class="small">시작 차시</label>
+            <select data-type="start" data-lane="${lane}" data-id="${b.instanceId}">${startOptions}</select>
+          </div>
+          <div style="flex:1">
+            <label class="small">종료 차시</label>
+            <select data-type="end" data-lane="${lane}" data-id="${b.instanceId}">${endOptions}</select>
+          </div>
         </div>
       </div>
-      ${
-        i === 0
-          ? `
-        <div class="row mt"><div style="flex:1">
-            <label class="small">시작 차시</label>
-            <select data-start="${lane}:${b.materialId}">
-              ${b.units
-                .map(
-                  (u) => `<option value="${u.unit_code}" ${
-                    u.unit_code === b.startUnitCode ? "selected" : ""
-                  }>
-                  ${u.unit_code} — ${u.lecture_range || u.title || ""}</option>`
-                )
-                .join("")}
-            </select>
-        </div></div>`
-          : `<div class="small muted mt">다음 책은 자동으로 첫 차시부터 시작</div>`
-      }
-    </div>`
-    )
+    `;
+    })
     .join("");
-  box.querySelectorAll("select[data-start]").forEach((s) => {
+
+  // [변경] 차시 변경 이벤트 핸들러
+  box.querySelectorAll("select[data-id]").forEach((s) => {
     s.onchange = (e) => {
-      const [ln, mid] = s.getAttribute("data-start").split(":");
-      const it = state.lanes[ln].find((x) => x.materialId === mid);
-      if (it) it.startUnitCode = e.target.value;
+      const { type, lane, id } = s.dataset;
+      const book = state.lanes[lane].find((x) => x.instanceId === id);
+      if (!book) return;
+
+      if (type === "start") {
+        book.startUnitCode = e.target.value;
+        // 시작 차시가 종료 차시보다 뒤로 가면, 종료 차시를 시작 차시와 동일하게 설정
+        const startIndex = book.units.findIndex(
+          (u) => u.unit_code === book.startUnitCode
+        );
+        const endIndex = book.units.findIndex(
+          (u) => u.unit_code === book.endUnitCode
+        );
+        if (startIndex > endIndex) {
+          book.endUnitCode = book.startUnitCode;
+        }
+        renderLane(lane); // 종료 차시 목록을 다시 렌더링하기 위해 호출
+      } else {
+        book.endUnitCode = e.target.value;
+      }
     };
   });
 }
+
+// 전역에서 버튼이 접근할 수 있게 노출 (instanceId 사용하도록 변경됨)
 window.removeFromLane = removeFromLane;
 window.move = move;
+
 async function previewPlan() {
   const studentName =
     $("#selStudent option:checked")?.textContent?.split(" (")[0] || "";
@@ -247,13 +299,17 @@ async function previewPlan() {
   if (!startDate || !endDate) return alert("시작/끝 날짜를 선택하세요.");
   if (!studentName || studentName === "학생 선택")
     return alert("학생을 선택하세요.");
+
   const lanes = {};
   for (const ln of ["main1", "main2", "vocab"]) {
-    lanes[ln] = state.lanes[ln].map((b, idx) => ({
+    // [변경] 모든 교재의 시작/종료 차시 정보를 포함하여 전송
+    lanes[ln] = state.lanes[ln].map((b) => ({
       materialId: b.materialId,
-      ...(idx === 0 ? { startUnitCode: b.startUnitCode } : {}),
+      startUnitCode: b.startUnitCode,
+      endUnitCode: b.endUnitCode,
     }));
   }
+
   const userSkips = Object.entries(state.exceptions).map(([date, v]) => ({
     date,
     type: v.type,
@@ -273,6 +329,7 @@ async function previewPlan() {
     lanes,
     userSkips,
   };
+
   const res = await api("/api/plan", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -284,6 +341,7 @@ async function previewPlan() {
   }
   renderPrintable(res.items, { studentName, startDate, endDate, lanes });
 }
+
 function renderPrintable(items, ctx) {
   const dates = [...new Set(items.map((i) => i.date))].sort();
   const thead = `<thead><tr><th style="width:110px">날짜</th><th>메인1</th><th>메인2</th><th>어휘</th></tr></thead>`;
