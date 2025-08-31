@@ -1,23 +1,41 @@
-// /api/plans.js — 신규 파일
+// /api/plans.js — 수정본
 
 import { kv } from "@vercel/kv";
 import { generatePlan } from "../lib/schedule.js";
 import { getAllTests } from "../lib/kv.js";
 
-// 학생의 모든 플랜을 가져오는 함수
-async function getPlansByStudent(studentId) {
-  if (!studentId) return [];
-  return (await kv.get(`plans:${studentId}`)) || [];
+// [추가] KV 데이터베이스가 준비되었는지 확인하는 함수
+function isKvReady() {
+  return !!(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
 }
 
-// 학생의 모든 플랜을 저장하는 함수
+// [수정] 학생의 모든 플랜을 가져오는 함수 (안정성 강화)
+async function getPlansByStudent(studentId) {
+  // KV가 준비되지 않았거나 studentId가 없으면 그냥 빈 배열을 반환
+  if (!studentId || !isKvReady()) {
+    return [];
+  }
+  try {
+    return (await kv.get(`plans:${studentId}`)) || [];
+  } catch (e) {
+    console.error("KV read error:", e);
+    // KV에서 읽는 중 에러가 발생해도 앱이 멈추지 않도록 빈 배열 반환
+    return [];
+  }
+}
+
+// [수정] 학생의 모든 플랜을 저장하는 함수 (안정성 강화)
 async function savePlansForStudent(studentId, plans) {
-  if (!studentId) throw new Error("Student ID is required to save plans.");
+  if (!isKvReady()) {
+    throw new Error("저장 기능(KV 데이터베이스)이 설정되지 않았습니다.");
+  }
+  if (!studentId) {
+    throw new Error("플랜을 저장하려면 학생 ID가 필요합니다.");
+  }
   await kv.set(`plans:${studentId}`, plans);
 }
 
-const toYMD = (d) => d.toISOString().slice(0, 10);
-
+// --- 핸들러 함수 (이하는 기존과 거의 동일, 에러 핸들링만 강화) ---
 export default async function handler(req, res) {
   const { studentId, planId } = req.query;
 
@@ -34,6 +52,12 @@ export default async function handler(req, res) {
   // --- POST: 새 플랜 생성 (단일/다수 학생) ---
   if (req.method === "POST") {
     try {
+      // KV가 준비되지 않았으면 저장 시도 전에 에러 발생
+      if (!isKvReady()) {
+        throw new Error(
+          "저장 기능(KV 데이터베이스)이 설정되지 않아 플랜을 생성할 수 없습니다."
+        );
+      }
       const body = req.body;
       const { students, ...planConfig } = body;
       if (!Array.isArray(students) || students.length === 0) {
@@ -76,6 +100,11 @@ export default async function handler(req, res) {
   // --- PUT: 기존 플랜 수정 ---
   if (req.method === "PUT" && planId) {
     try {
+      if (!isKvReady()) {
+        throw new Error(
+          "저장 기능(KV 데이터베이스)이 설정되지 않아 플랜을 수정할 수 없습니다."
+        );
+      }
       const body = req.body;
       const { studentId, ...planConfig } = body;
       const studentPlans = await getPlansByStudent(studentId);
@@ -112,6 +141,11 @@ export default async function handler(req, res) {
   // --- DELETE: 기존 플랜 삭제 ---
   if (req.method === "DELETE" && planId) {
     try {
+      if (!isKvReady()) {
+        throw new Error(
+          "저장 기능(KV 데이터베이스)이 설정되지 않아 플랜을 삭제할 수 없습니다."
+        );
+      }
       const { studentId } = req.query;
       let studentPlans = await getPlansByStudent(studentId);
       const initialLength = studentPlans.length;
