@@ -64,8 +64,6 @@
       .test-info b {
         font-size: 14px;
       }
-
-      /* [추가] 교재 정보 헤더 스타일 */
       .materials-header {
         display: flex;
         flex-wrap: wrap;
@@ -78,7 +76,7 @@
         background: #f8fafc;
         border-radius: 12px;
         padding: 12px 16px;
-        flex: 1 1 220px; /* 화면 크기에 따라 유연하게 조절 */
+        flex: 1 1 220px;
       }
       .material-title {
         font-weight: bold;
@@ -88,8 +86,6 @@
         color: var(--muted);
         margin-top: 4px;
       }
-
-      /* [추가] 2중 헤더 테이블 스타일 */
       .table th,
       .table td {
         border-right: 1px solid var(--border);
@@ -97,13 +93,11 @@
         padding: 6px 8px;
         font-size: 13px;
         vertical-align: middle;
-        text-align: center;
+        text-align: center; /* [변경] 모든 텍스트 중앙 정렬 */
       }
-      .table th:first-child,
-      .table td:first-child {
-        text-align: left;
-        padding-left: 10px;
-      }
+      /* [삭제] 첫번째 열 왼쪽 정렬 규칙 삭제
+      .table th:first-child, .table td:first-child { ... }
+      */
       .table th:last-child,
       .table td:last-child {
         border-right: 0;

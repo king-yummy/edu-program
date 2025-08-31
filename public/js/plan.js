@@ -40,7 +40,6 @@ async function boot() {
   $("#selClass").innerHTML = classOptions;
   $("#selClassInfo").innerHTML = classOptions;
 
-  // [수정] 두 개의 반 선택 드롭다운 연동
   $("#selClass").onchange = onClassChange;
   $("#selClassInfo").onchange = (e) => {
     $("#selClass").value = e.target.value;
@@ -406,19 +405,18 @@ function renderPrintable(items, ctx) {
       const skip = dayItems.find((x) => x.source === "skip");
       const tests = dayItems.filter((x) => x.source === "test");
 
-      // [변경] 날짜 형식 (YY.MM.DD (요일))
       const DOW_KR = ["일", "월", "화", "수", "목", "금", "토"];
-      const dateObj = new Date(d + "T00:00:00Z"); // UTC 기준으로 날짜 해석
+      const dateObj = new Date(d + "T00:00:00Z");
       const dayName = DOW_KR[dateObj.getUTCDay()];
-      const dateString = `${d.slice(2).replace(/-/g, ".")} (${dayName})`;
+      const dateString = `<b>${d.slice(2).replace(/-/g, ".")} (${dayName})</b>`;
       const tag = `data-date="${d}" class="js-date" style="cursor:pointer; text-decoration:underline;"`;
 
       if (skip) {
-        return `<tr><td ${tag}><b>${dateString}</b></td><td colspan="12" style="color:#64748b;background:#f8fafc;">${skip.reason}</td></tr>`;
+        return `<tr><td ${tag}>${dateString}</td><td colspan="12" style="color:#64748b;background:#f8fafc;">${skip.reason}</td></tr>`;
       }
       if (tests.length) {
         const testContent = tests.map((t) => t.title).join("<br>");
-        return `<tr><td ${tag}><b>${dateString}</b></td><td colspan="12" style="background: #fffbe6;">${testContent}</td></tr>`;
+        return `<tr><td ${tag}>${dateString}</td><td colspan="12" style="background: #fffbe6;">${testContent}</td></tr>`;
       }
 
       const m1 = dayItems.find(
@@ -435,7 +433,7 @@ function renderPrintable(items, ctx) {
       );
       const v = dayItems.find((x) => x.source === "vocab");
 
-      // [변경] OT 교재 처리 로직
+      // [변경] OT 교재 처리 로직 (열 통합, 새 스타일)
       const renderMainLane = (mainItem) => {
         if (!mainItem) {
           return `<td></td><td></td><td></td><td></td><td></td>`;
@@ -444,8 +442,7 @@ function renderPrintable(items, ctx) {
           const title =
             state.materials.find((m) => m.material_id === mainItem.material_id)
               ?.title || mainItem.material_id;
-          const otBg = `style="background: #fffde7;"`;
-          return `<td ${otBg}><b style="padding-left: 5px;">${title} OT</b></td><td ${otBg}></td><td ${otBg}></td><td ${otBg}></td><td ${otBg}></td>`;
+          return `<td colspan="5" style="background: #F9FF00; border: 1px solid red; font-weight: bold; text-align: center;">${title} OT</td>`;
         }
         return `<td>${mainItem.lecture_range || ""}</td>
                 <td>${mainItem.pages ? `p.${mainItem.pages}` : ""}</td>
@@ -457,8 +454,8 @@ function renderPrintable(items, ctx) {
       const m1_html = renderMainLane(m1);
       const m2_html = renderMainLane(m2);
 
-      return `<tr style="text-align: center; font-size: 14px;">
-          <td ${tag}><b>${dateString}</b></td>
+      return `<tr style="font-size: 14px;">
+          <td ${tag}>${dateString}</td>
           ${m1_html}
           ${m2_html}
           <td>${v?.lecture_range || ""}</td>
