@@ -293,12 +293,22 @@ function renderPrintable(items, ctx) {
     .map((d) => {
       const dayItems = items.filter((x) => x.date === d);
       const skip = dayItems.find((x) => x.source === "skip");
+      const test = dayItems.find((x) => x.source === "test");
       const tag = `data-date="${d}" class="js-date" style="cursor:pointer; text-decoration:underline;"`;
 
       if (skip) {
         return `<tr>
         <td ${tag}><b>${d}</b></td>
         <td colspan="3" style="color:#64748b;background:#f8fafc;">${skip.reason}</td>
+      </tr>`;
+      }
+
+      if (test) {
+        return `<tr>
+        <td ${tag}><b>${d}</b></td>
+        <td>${test.title}</td>
+        <td>풀이 및 오답</td>
+        <td></td>
       </tr>`;
       }
 
