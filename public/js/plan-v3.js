@@ -1094,7 +1094,9 @@ function renderPrintable(items, ctx) {
       const m1Id = m1?.material_id || null;
       const m2Id = m2?.material_id || null;
 
+      // 이전 날짜와 교재 ID를 비교하여 교재가 바뀌었는지 확인합니다.
       if ((prevM1Id && m1Id !== prevM1Id) || (prevM2Id && m2Id !== prevM2Id)) {
+        // 단, null -> 교재 로 바뀌는 경우는 첫 시작이므로 제외합니다.
         if (prevM1Id || prevM2Id) {
           rowClass = "book-change-divider";
         }
@@ -1103,7 +1105,7 @@ function renderPrintable(items, ctx) {
       prevM2Id = m2Id;
 
       if (skip) {
-        return `<tr class="${rowClass}" ${tag}><td class="date-column section-divider">${dateString}</td><td colspan="12" style="color:#64748b;background:#f1f5f9;">${skip.reason}</td></tr>`;
+        return `<tr class="${rowClass}" ${tag}><td class="date-column section-divider">${dateString}</td><td colspan="12" style="color:#64748b;background:#f8fafc;">${skip.reason}</td></tr>`;
       }
 
       const renderMainLane = (mainItem) => {
@@ -1112,9 +1114,9 @@ function renderPrintable(items, ctx) {
           state.allMaterials.find((m) => m.material_id === mainItem.material_id)
             ?.title || mainItem.material_id;
         if (mainItem.isOT)
-          return `<td colspan="5" style="background: #fef08a; font-weight: bold;">"${title}" OT</td>`;
+          return `<td colspan="5" style="background: #F9FF00; font-weight: bold;">"${title}" OT</td>`;
         if (mainItem.isReturn)
-          return `<td colspan="5" style="background: #bae6fd; font-weight: bold;">"${title}" 복귀</td>`;
+          return `<td colspan="5" style="background: #e0f2fe; font-weight: bold;">"${title}" 복귀</td>`;
         return `<td>${mainItem.lecture_range || ""}</td><td>${
           mainItem.pages ? `p.${mainItem.pages}` : ""
         }</td><td>${mainItem.wb ? `p.${mainItem.wb}` : ""}</td><td>${
@@ -1122,20 +1124,16 @@ function renderPrintable(items, ctx) {
         }</td><td>${mainItem.key_sents || ""}</td>`;
       };
 
-      // <td>를 닫기 직전에 클래스를 추가하기 위해 정규식을 사용합니다.
-      const m1Html = renderMainLane(m1).replace(
-        /(<\/td>\s*){5}$/,
-        "</td>".repeat(4) + '<td class="section-divider">'
-      );
-      const m2Html = renderMainLane(m2).replace(
-        /(<\/td>\s*){5}$/,
-        "</td>".repeat(4) + '<td class="section-divider">'
-      );
-
       return `<tr class="${rowClass}" ${tag}>
                 <td class="date-column section-divider">${dateString}</td>
-                ${m1Html}
-                ${m2Html}
+                ${renderMainLane(m1).replace(
+                  /<\/td>$/,
+                  '<td class="section-divider">'
+                )}
+                ${renderMainLane(m2).replace(
+                  /<\/td>$/,
+                  '<td class="section-divider">'
+                )}
                 <td>${v?.lecture_range || ""}</td>
                 <td>${v?.vocab_range || ""}</td>
               </tr>`;
