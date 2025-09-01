@@ -200,12 +200,22 @@ async function addEvent(type) {
   const date = $(isAll ? "#eventDateAll" : "#eventDateScoped").value;
   const title = $(isAll ? "#eventTitleAll" : "#eventTitleScoped").value.trim();
   const scope = isAll ? "all" : $("#eventScope").value;
-  const scopeValue = isAll
-    ? ""
-    : (
-        $("#scopedValueContainer select, #scopedValueContainer input")[0]
-          ?.value || ""
-      ).trim();
+
+  // ▼▼▼ [교체] scopeValue를 가져오는 부분을 아래 코드로 교체하세요. ▼▼▼
+  let scopeValue = "";
+  if (!isAll) {
+    const inputs = $$(
+      "#scopedValueContainer select, #scopedValueContainer input"
+    );
+    if (scope === "school_grade" && inputs.length === 2) {
+      // 학교 및 학년별: "학교이름:학년" 형태로 값을 조합
+      scopeValue = `${inputs[0].value}:${inputs[1].value}`;
+    } else if (inputs.length > 0) {
+      scopeValue = (inputs[0].value || "").trim();
+    }
+  }
+  // ▲▲▲ [교체] 여기까지 ▲▲▲
+
   if (!date || !title) return alert("날짜와 내용을 입력하세요.");
   if (!isAll && !scopeValue)
     return alert("부분 설정 값을 선택하거나 입력하세요.");
@@ -247,40 +257,79 @@ window.deleteEvent = deleteEvent;
 function renderScopedEventInputs() {
   const scope = $("#eventScope").value;
   const container = $("#scopedValueContainer");
-  container.innerHTML = "";
+  container.innerHTML = ""; // 컨테이너 초기화
+
   let options = [];
-  let selectEl = document.createElement("select");
-  selectEl.style.width = "100%";
-  switch (scope) {
-    case "school":
+
+  const createSelect = (opts, placeholder) => {
+    const el = document.createElement("select");
+    el.style.flex = "1";
+    el.innerHTML = `<option value="">${placeholder}</option>` + opts;
+    return el;
+  };
+
+  if (scope === "school" || scope === "grade" || scope === "class") {
+    let selectHTML = "";
+    if (scope === "school") {
       options = [
         ...new Set(state.allStudents.map((s) => s.school).filter(Boolean)),
       ];
-      selectEl.innerHTML =
-        `<option value="">학교 선택</option>` +
-        options.map((o) => `<option value="${o}">${o}</option>`).join("");
-      container.appendChild(selectEl);
-      break;
-    case "grade":
+      selectHTML = options
+        .map((o) => `<option value="${o}">${o}</option>`)
+        .join("");
+      container.appendChild(createSelect(selectHTML, "학교 선택"));
+    } else if (scope === "grade") {
       options = [
         ...new Set(
           state.allStudents.map((s) => String(s.grade)).filter(Boolean)
         ),
       ].sort();
-      selectEl.innerHTML =
-        `<option value="">학년 선택</option>` +
-        options.map((o) => `<option value="${o}">${o}학년</option>`).join("");
-      container.appendChild(selectEl);
-      break;
-    case "class":
+      selectHTML = options
+        .map((o) => `<option value="${o}">${o}학년</option>`)
+        .join("");
+      container.appendChild(createSelect(selectHTML, "학년 선택"));
+    } else if (scope === "class") {
       options = state.allClasses;
-      selectEl.innerHTML =
-        `<option value="">반 선택</option>` +
-        options
-          .map((o) => `<option value="${o.id}">${o.name}</option>`)
-          .join("");
-      container.appendChild(selectEl);
-      break;
+      selectHTML = options
+        .map((o) => `<option value="${o.id}">${o.name}</option>`)
+        .join("");
+      container.appendChild(createSelect(selectHTML, "반 선택"));
+    }
+  } else if (scope === "school_grade") {
+    // 1. 학교 선택 드롭다운 생성
+    const schoolOptions = [
+      ...new Set(state.allStudents.map((s) => s.school).filter(Boolean)),
+    ];
+    const schoolSelectHTML = schoolOptions
+      .map((o) => `<option value="${o}">${o}</option>`)
+      .join("");
+    const schoolSelect = createSelect(schoolSelectHTML, "학교 먼저 선택");
+    container.appendChild(schoolSelect);
+
+    // 2. 학교 선택 시, 학년 드롭다운을 동적으로 생성
+    schoolSelect.onchange = () => {
+      // 기존 학년 드롭다운이 있다면 제거
+      if (container.children.length > 1) {
+        container.removeChild(container.lastChild);
+      }
+      const selectedSchool = schoolSelect.value;
+      if (!selectedSchool) return;
+
+      const gradeOptions = [
+        ...new Set(
+          state.allStudents
+            .filter((s) => s.school === selectedSchool)
+            .map((s) => String(s.grade))
+            .filter(Boolean)
+        ),
+      ].sort();
+
+      const gradeSelectHTML = gradeOptions
+        .map((o) => `<option value="${o}">${o}학년</option>`)
+        .join("");
+      const gradeSelect = createSelect(gradeSelectHTML, "학년 선택");
+      container.appendChild(gradeSelect);
+    };
   }
 }
 
