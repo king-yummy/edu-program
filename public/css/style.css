@@ -172,7 +172,7 @@ button {
 }
 
 @media print {
-  /* --- 인쇄 전용 스타일 (v3) --- */
+  /* --- 인쇄 전용 스타일 (v4) --- */
 
   @page {
     size: A4;
@@ -238,7 +238,6 @@ button {
   .material-lecture {
     font-size: 7.5px;
     color: #333;
-    font-weight: bold;
   }
   .student-header {
     font-size: 14px;
@@ -252,17 +251,28 @@ button {
     table-layout: fixed;
   }
 
-  .table td,
   .table th {
     padding: 2px 3px;
-    font-size: 7.5px;
+    font-size: 8px;
+    border: 1px solid #ccc;
+    font-weight: bold;
+  }
+
+  .table tbody td {
+    padding: 2px 3px;
+    font-size: 7.5px; /* 표 내부 텍스트 크기 축소 */
     border: 1px solid #ccc;
     word-break: break-all;
     text-align: center;
+    vertical-align: middle;
   }
 
-  .table th {
-    font-weight: bold;
+  .table .date-column {
+    width: 65px; /* 날짜 칼럼 폭 축소 */
+  }
+
+  .lecture-text {
+    font-weight: bold; /* 인강 텍스트 굵게 */
   }
 
   .page-break-after {

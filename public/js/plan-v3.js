@@ -1135,7 +1135,7 @@ function renderPrintable(items, ctx) {
     .join("")}</div>`;
   const thead = `
       <thead style="font-size: 12px;">
-        <tr><th rowspan="3" class="section-divider" style="width:100px; vertical-align: middle;">날짜</th><th colspan="5">메인 1</th> <th colspan="5" class="section-divider">메인 2</th> <th colspan="2">단어 DT</th></tr>
+        <tr><th rowspan="3" class="section-divider date-column" style="vertical-align: middle;">날짜</th><th colspan="5">메인 1</th> <th colspan="5" class="section-divider">메인 2</th> <th colspan="2">단어 DT</th></tr>
         <tr><th colspan="3">수업 진도</th> <th colspan="2">티칭 챌린지</th><th colspan="3">수업 진도</th> <th colspan="2" class="section-divider">티칭 챌린지</th><th rowspan="2" style="vertical-align: middle;">회차</th> <th rowspan="2" style="vertical-align: middle;">DT</th></tr>
         <tr><th>인강</th><th>교재 page</th><th>WB</th><th>개념+단어</th><th>문장학습</th><th>인강</th><th>교재 page</th><th>WB</th><th>개념+단어</th><th class="section-divider">문장학습</th></tr>
       </thead>`;
@@ -1179,7 +1179,9 @@ function renderPrintable(items, ctx) {
           return `<td colspan="5" style="background: #F9FF00; font-weight: bold;">"${title}" OT</td>`;
         if (mainItem.isReturn)
           return `<td colspan="5" style="background: #e0f2fe; font-weight: bold;">"${title}" 복귀</td>`;
-        return `<td>${mainItem.lecture_range || ""}</td><td>${
+        return `<td><span class="lecture-text">${
+          mainItem.lecture_range || ""
+        }</span></td><td>${
           mainItem.pages ? `p.${mainItem.pages}` : ""
         }</td><td>${mainItem.wb ? `p.${mainItem.wb}` : ""}</td><td>${
           mainItem.dt_vocab || ""
@@ -1217,7 +1219,7 @@ function prepareAndPrint() {
   );
 
   // 2. 미리보기 테이블에 있는 모든 날짜 행을 가져옵니다.
-  const rows = $$("#result .table tbody tr[data-date]");
+  const rows = $$("#result .table tbody tr");
   const ROWS_PER_PAGE = 50; // 페이지당 행 개수 (조정 가능)
 
   // 3. 50번째 행마다 페이지 나누기 클래스를 추가합니다.
