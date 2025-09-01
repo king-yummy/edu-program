@@ -588,26 +588,31 @@ function renderMaterialOptions() {
 window.handleDateClick = (event, date) => {
   if (state.isInsertionMode) return;
 
-  const isNewSelection =
-    !state.selectionStart ||
-    (state.selectionStart &&
-      state.selectionEnd &&
-      state.selectionStart !== state.selectionEnd);
+  // Ctrl(Cmd) 키를 누른 상태에서는 날짜 범위 선택 모드로 작동합니다.
+  if (event.ctrlKey || event.metaKey) {
+    const isNewSelection =
+      !state.selectionStart ||
+      (state.selectionStart &&
+        state.selectionEnd &&
+        state.selectionStart !== state.selectionEnd);
 
-  if (isNewSelection) {
-    state.selectionStart = date;
-    state.selectionEnd = date;
-  } else {
-    const firstClickDate = state.selectionStart;
-    if (date < firstClickDate) {
+    if (isNewSelection) {
       state.selectionStart = date;
-      state.selectionEnd = firstClickDate;
-    } else {
       state.selectionEnd = date;
+    } else {
+      const firstClickDate = state.selectionStart;
+      if (date < firstClickDate) {
+        state.selectionStart = date;
+        state.selectionEnd = firstClickDate;
+      } else {
+        state.selectionEnd = date;
+      }
     }
+    updateSelectionUI();
+  } else {
+    // 일반 클릭 시에는 결석(skip) 처리 모달을 엽니다.
+    openSkipModal(date);
   }
-
-  updateSelectionUI();
 };
 
 function updateSelectionUI() {
@@ -1030,6 +1035,13 @@ function renderPrintable(items, ctx) {
   const studentHeader = `<div style="margin-bottom:12px;"><b>${ctx.studentNames.join(
     ", "
   )}</b> / ${ctx.startDate} ~ ${ctx.endDate}</div>`;
+
+  const instructionText = `
+    <div class="muted small" style="margin-bottom: 12px; padding: 8px; background: #f8fafc; border-radius: 8px;">
+      <b>💡 사용법:</b> 날짜를 그냥 클릭하면 <b>결석 처리</b>, <code>Ctrl</code> 또는 <code>Cmd</code>를 누른 채로 클릭하면 <b>기간 선택(교재 삽입용)</b>이 됩니다.
+    </div>
+  `;
+
   const usedMainMaterialIds = [
     ...new Set(
       items
@@ -1099,6 +1111,6 @@ function renderPrintable(items, ctx) {
     .join("");
   $(
     "#result"
-  ).innerHTML = `${studentHeader}${materialsHeaderHtml}<table class="table">${thead}<tbody>${rows}</tbody></table>`;
+  ).innerHTML = `${studentHeader}${instructionText}${materialsHeaderHtml}<table class="table">${thead}<tbody>${rows}</tbody></table>`; // <-- ${instructionText} 추가
   updateSelectionUI();
 }
