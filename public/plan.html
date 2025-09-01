@@ -327,5 +327,34 @@
       </div>
     </main>
     <script defer src="./js/plan-v3.js"></script>
+    <div id="skipModal" class="modal-overlay no-print" style="display: none">
+      <div class="modal-content" style="width: 380px">
+        <div class="modal-title">개인 일정 변경</div>
+        <p id="skipDateLabel" class="muted" style="margin-bottom: 16px"></p>
+
+        <div class="row" style="gap: 8px; margin-bottom: 12px">
+          <button class="btn" data-type="vacation" style="flex: 1">휴가</button>
+          <button class="btn" data-type="sick" style="flex: 1">질병</button>
+          <button class="btn" data-type="other" style="flex: 1">기타</button>
+        </div>
+        <input id="skipReason" placeholder="기타 사유 (선택 사항)" />
+
+        <div class="modal-actions" style="margin-top: 20px; text-align: right">
+          <button id="btnSkipDelete" class="btn" style="background: #ef4444">
+            삭제
+          </button>
+          <button id="btnSkipSave" class="btn" style="margin-left: 8px">
+            저장
+          </button>
+          <button
+            id="btnSkipClose"
+            class="btn"
+            style="background: #94a3b8; margin-left: 8px"
+          >
+            닫기
+          </button>
+        </div>
+      </div>
+    </div>
   </body>
 </html>

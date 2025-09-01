@@ -647,6 +647,8 @@ function renderPrintable(items, ctx) {
       const dayName = DOW_KR[dateObj.getUTCDay()];
       const dateString = `<b>${d.slice(2).replace(/-/g, ".")} (${dayName})</b>`;
 
+      const tag = `onclick="openSkipModal('${d}')" style="cursor:pointer; text-decoration:underline;"`;
+
       if (skip) {
         return `<tr><td>${dateString}</td><td colspan="12" style="color:#64748b;background:#f8fafc;">${skip.reason}</td></tr>`;
       }
@@ -740,3 +742,56 @@ async function loadPlanForEditing(planId) {
   $("#btnSave").textContent = "수정 내용 저장";
   triggerPreview();
 }
+
+// /public/js/plan-v3.js 파일 하단에 추가
+
+function openSkipModal(date) {
+  const modal = $("#skipModal");
+  modal.dataset.date = date;
+  $("#skipDateLabel").textContent = `날짜: ${date}`;
+
+  const existingSkip = state.userSkips[date];
+  $("#skipReason").value =
+    existingSkip?.type === "other" ? existingSkip.reason : "";
+
+  modal.style.display = "flex";
+}
+window.openSkipModal = openSkipModal; // 전역에서 접근 가능하도록 설정
+
+function closeSkipModal() {
+  $("#skipModal").style.display = "none";
+}
+
+function saveSkip(type) {
+  const date = $("#skipModal").dataset.date;
+  const reason = $("#skipReason").value.trim();
+
+  if (type === "other" && !reason) {
+    return alert("기타 사유를 입력해주세요.");
+  }
+
+  state.userSkips[date] = {
+    type,
+    reason: type === "other" ? reason : type === "vacation" ? "휴가" : "질병",
+  };
+
+  closeSkipModal();
+  triggerPreview();
+}
+
+function deleteSkip() {
+  const date = $("#skipModal").dataset.date;
+  delete state.userSkips[date];
+  closeSkipModal();
+  triggerPreview();
+}
+
+// 팝업 창의 버튼들에 이벤트 리스너 연결
+document.addEventListener("DOMContentLoaded", () => {
+  $$("#skipModal [data-type]").forEach((btn) => {
+    btn.onclick = () => saveSkip(btn.dataset.type);
+  });
+  $("#btnSkipSave").onclick = () => saveSkip("other");
+  $("#btnSkipDelete").onclick = deleteSkip;
+  $("#btnSkipClose").onclick = closeSkipModal;
+});
