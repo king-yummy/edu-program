@@ -171,26 +171,45 @@ button {
   font-size: 12px;
 }
 
-/* 헤더 스타일: 배경색, 굵은 글씨, 중앙 정렬 */
-.table thead th {
-  background-color: #fefce8; /* 눈이 편안한 노란색 계열 */
-  font-weight: bold;
+/* 기본 테이블 셀 스타일: 얇고 연한 선, 여유있는 안쪽 여백 */
+.table td,
+.table th {
+  border: 1px solid #e2e8f0;
+  padding: 8px 10px;
+  vertical-align: middle;
   text-align: center;
-  border-bottom: 2px solid #e2e8f0;
+  font-size: 13px;
+}
+.table th {
+  border-width: 1px;
 }
 
-/* 주요 항목(날짜, 메인1, 메인2)을 구분하는 굵은 세로선 */
+/* 테이블 헤더 스타일: 세련된 색상과 흰색 글씨 */
+.table thead th {
+  background-color: #475569; /* 차분하고 고급스러운 슬레이트 색 */
+  color: white;
+  font-weight: bold;
+}
+
+/* 본문 짝수 행에 배경색 적용 (지브라 스트라이핑) */
+.table tbody tr:nth-child(even) td {
+  background-color: #f8fafc;
+}
+
+/* 주요 항목 구분선: 굵고 진하게 */
 .section-divider {
-  border-right: 2px solid #94a3b8 !important; /* !important로 다른 스타일에 덮어씌워지지 않게 함 */
+  border-right: 2px solid #94a3b8 !important;
+}
+.table thead .section-divider {
+  border-right: 2px solid #64748b !important; /* 헤더 구분선은 더 진하게 */
 }
 
-/* 교재가 변경될 때 표시되는 굵은 가로선 */
+/* 교재 변경 구분선: 굵고 진하게 */
 .book-change-divider td {
   border-top: 2px solid #94a3b8 !important;
 }
 
-/* 날짜 열 글씨 굵게 및 중앙 정렬 */
+/* 날짜 열 스타일 */
 .date-column {
   font-weight: bold;
-  text-align: center;
 }
