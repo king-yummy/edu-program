@@ -340,7 +340,6 @@ function renderLane(lane, segment) {
   box.querySelectorAll("select").forEach((s) => (s.onchange = onUnitChange));
 }
 
-// --- [신규] onUnitChange 함수 정의 ---
 function onUnitChange(e) {
   const { type, lane, id, segmentId } = e.target.dataset;
   const segment = state.planSegments.find((s) => s.id === segmentId);
@@ -476,16 +475,247 @@ function updateSelectionUI() {
   }
 }
 
+// --- [수정] 교재 추가 및 삽입 기능 최종 구현 ---
 function enterInsertionMode() {
-  /* ... 데모 ... */
-}
-async function addBookToLane() {
-  /* ... 데모 ... */
-}
-async function savePlan() {
-  /* ... 데모 ... */
+  if (!state.selectionStart) {
+    return alert("먼저 미리보기에서 기간을 선택해주세요.");
+  }
+  state.isInsertionMode = true;
+  alert(
+    `[${state.selectionStart} ~ ${state.selectionEnd}]\n이 기간에 삽입할 교재를 왼쪽에서 선택하고 '선택 기간에 삽입' 버튼을 누르세요.`
+  );
+  $("#btnAddBook").textContent = "선택 기간에 삽입";
+  $("#planEditor").scrollIntoView({ behavior: "smooth" });
 }
 
+async function addBookToLane() {
+  if (state.isInsertionMode) {
+    await insertBookIntoSelection();
+    state.isInsertionMode = false;
+    $("#btnAddBook").textContent = "레인에 추가";
+    state.selectionStart = state.selectionEnd = lastSelectedDate = null;
+    updateSelectionUI(); // 선택 해제 UI 반영
+  } else {
+    const segment =
+      state.planSegments.length > 0 ? state.planSegments[0] : null;
+    if (segment) {
+      await addBookToSegment(segment.id);
+    } else {
+      alert("교재를 추가할 플랜 구간이 없습니다. 새 플랜을 먼저 만들어주세요.");
+    }
+  }
+}
+
+async function addBookToSegment(segmentId) {
+  const segment = state.planSegments.find((s) => s.id === segmentId);
+  const materialId = $("#selMaterial").value;
+  const lane = $("#selLane").value;
+  if (!materialId || !lane || !segment) return;
+  try {
+    const title =
+      state.allMaterials.find((m) => m.material_id === materialId)?.title ||
+      materialId;
+    const isVocab = lane === "vocab";
+    const units = await api(
+      isVocab
+        ? `/api/vocaBook?materialId=${materialId}`
+        : `/api/mainBook?materialId=${materialId}`
+    );
+    if (!Array.isArray(units) || !units.length)
+      return alert("해당 교재의 차시 정보가 없습니다.");
+    segment.lanes[lane].push({
+      instanceId: `inst_${Date.now()}`,
+      materialId,
+      title,
+      units,
+      startUnitCode: units[0].unit_code,
+      endUnitCode: units[units.length - 1].unit_code,
+    });
+    renderAllLanes();
+    triggerPreview();
+  } catch (e) {
+    alert(`교재 추가 실패: ${e.message}`);
+  }
+}
+
+async function insertBookIntoSelection() {
+  const { start, end, targetSegment } = findTargetSegmentForInsertion();
+  if (!targetSegment) {
+    alert("교재를 삽입할 플랜 구간을 찾을 수 없습니다.");
+    return;
+  }
+
+  const itemsBefore = await getPlanItems(
+    targetSegment.startDate,
+    getPreviousDay(start),
+    targetSegment
+  );
+  const lastItemByLane = { main1: null, main2: null, vocab: null };
+  itemsBefore
+    .filter((item) => item.source !== "skip")
+    .forEach((item) => {
+      lastItemByLane[item.lane] = item;
+    });
+
+  const lanesAfter = JSON.parse(JSON.stringify(targetSegment.lanes));
+  for (const lane in lastItemByLane) {
+    const lastItem = lastItemByLane[lane];
+    if (lastItem) {
+      const laneDataAfter = lanesAfter[lane];
+      const bookAfterIndex = laneDataAfter.findIndex(
+        (b) => b.materialId === lastItem.material_id
+      );
+      const bookAfter = laneDataAfter[bookAfterIndex];
+      if (bookAfter) {
+        const lastUnitIndex = bookAfter.units.findIndex(
+          (u) => u.unit_code === lastItem.unit_code
+        );
+        if (lastUnitIndex > -1 && lastUnitIndex + 1 < bookAfter.units.length) {
+          bookAfter.startUnitCode =
+            bookAfter.units[lastUnitIndex + 1].unit_code;
+        } else {
+          laneDataAfter.splice(bookAfterIndex, 1);
+        }
+      }
+    }
+  }
+
+  const beforeSegment = { ...targetSegment, endDate: getPreviousDay(start) };
+  const newSegment = {
+    id: `seg_${Date.now()}_new`,
+    startDate: start,
+    endDate: end,
+    days: targetSegment.days,
+    lanes: { main1: [], main2: [], vocab: [] },
+  };
+  const afterSegment = {
+    ...targetSegment,
+    id: `seg_${Date.now()}_after`,
+    startDate: getNextDay(end),
+    lanes: lanesAfter,
+  };
+
+  const originalIndex = state.planSegments.findIndex(
+    (s) => s.id === targetSegment.id
+  );
+  state.planSegments.splice(
+    originalIndex,
+    1,
+    beforeSegment,
+    newSegment,
+    afterSegment
+  );
+  state.planSegments = state.planSegments.filter(
+    (s) => s.startDate <= s.endDate
+  );
+
+  await addBookToSegment(newSegment.id);
+}
+
+function findTargetSegmentForInsertion() {
+  const start = state.selectionStart;
+  const end = state.selectionEnd;
+  const targetSegment = state.planSegments.find(
+    (s) => start >= s.startDate && start <= s.endDate
+  );
+  return { start, end, targetSegment };
+}
+
+async function getPlanItems(startDate, endDate, segment) {
+  if (startDate > endDate) return [];
+  const defaultSchedule =
+    state.allClasses.find((c) => c.id === state.selectedStudent.class_id)
+      ?.schedule_days || "MON,WED,FRI";
+  const body = {
+    startDate,
+    endDate,
+    days: (segment.days || defaultSchedule).toUpperCase(),
+    lanes: segment.lanes,
+    userSkips: {},
+    events: [],
+    studentInfo: state.selectedStudent,
+  };
+  const res = await api("/api/plan", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return res.items || [];
+}
+
+function getPreviousDay(dateStr) {
+  const date = new Date(dateStr);
+  date.setUTCDate(date.getUTCDate() - 1);
+  return date.toISOString().slice(0, 10);
+}
+function getNextDay(dateStr) {
+  const date = new Date(dateStr);
+  date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString().slice(0, 10);
+}
+
+async function savePlan() {
+  if (!state.selectedStudent) return alert("학생을 선택하세요.");
+  const planToSave = {
+    planId:
+      state.editingPlanId || `pln_${Date.now()}_${state.selectedStudent.id}`,
+    studentId: state.selectedStudent.id,
+    planSegments: state.planSegments.map((seg) => ({
+      id: seg.id,
+      startDate: seg.startDate,
+      endDate: seg.endDate,
+      days: seg.days,
+      lanes: {
+        main1: seg.lanes.main1.map((b) => ({
+          instanceId: b.instanceId,
+          materialId: b.materialId,
+          startUnitCode: b.startUnitCode,
+          endUnitCode: b.endUnitCode,
+        })),
+        main2: seg.lanes.main2.map((b) => ({
+          instanceId: b.instanceId,
+          materialId: b.materialId,
+          startUnitCode: b.startUnitCode,
+          endUnitCode: b.endUnitCode,
+        })),
+        vocab: seg.lanes.vocab.map((b) => ({
+          instanceId: b.instanceId,
+          materialId: b.materialId,
+          startUnitCode: b.startUnitCode,
+          endUnitCode: b.endUnitCode,
+        })),
+      },
+    })),
+    userSkips: state.userSkips,
+  };
+  try {
+    if (state.editingPlanId) {
+      await api(`/api/plans?planId=${state.editingPlanId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(planToSave),
+      });
+      alert("플랜이 수정되었습니다.");
+    } else {
+      await api("/api/plans", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          students: [state.selectedStudent],
+          ...planToSave,
+        }),
+      });
+      alert("플랜이 저장되었습니다.");
+    }
+    const res = await api(`/api/plans?studentId=${state.selectedStudent.id}`);
+    state.studentPlans = res.plans || [];
+    renderExistingPlans();
+    $("#planEditor").style.display = "none";
+    $("#planActions").style.display = "block";
+  } catch (e) {
+    alert(`저장 실패: ${e.message}`);
+  }
+}
 async function deletePlan(planId) {
   if (!confirm("정말 이 플랜을 삭제하시겠습니까?")) return;
   try {
@@ -501,84 +731,6 @@ async function deletePlan(planId) {
   }
 }
 window.deletePlan = deletePlan;
-
-function renderPrintable(items, ctx) {
-  const dates = [...new Set(items.map((i) => i.date))].sort();
-  const studentHeader = `<div style="margin-bottom:12px;"><b>${ctx.studentNames.join(
-    ", "
-  )}</b> / ${ctx.startDate} ~ ${ctx.endDate}</div>`;
-  const usedMainMaterialIds = [
-    ...new Set(
-      items
-        .filter((it) => it.source === "main" && it.material_id)
-        .map((it) => it.material_id)
-    ),
-  ];
-  const usedMaterials = usedMainMaterialIds
-    .map((id) => state.allMaterials.find((m) => m.material_id === id))
-    .filter(Boolean);
-  const materialsHeaderHtml = `<div class="materials-header">${usedMaterials
-    .map(
-      (m) =>
-        `<div class="material-item"><div class="material-title">${
-          m.title
-        }</div><div class="material-lecture">${
-          m.lecture || "인강 정보 없음"
-        }</div></div>`
-    )
-    .join("")}</div>`;
-  const thead = `
-      <thead style="font-size: 12px; text-align: center;">
-        <tr><th rowspan="3" style="width:100px; vertical-align: middle;">날짜</th><th colspan="5">메인 1</th> <th colspan="5">메인 2</th> <th colspan="2">단어 DT</th></tr>
-        <tr><th colspan="3">수업 진도</th> <th colspan="2">티칭 챌린지</th><th colspan="3">수업 진도</th> <th colspan="2">티칭 챌린지</th><th rowspan="2" style="vertical-align: middle;">회차</th> <th rowspan="2" style="vertical-align: middle;">DT</th></tr>
-        <tr><th>인강</th><th>교재 page</th><th>WB</th><th>개념+단어</th><th>문장학습</th><th>인강</th><th>교재 page</th><th>WB</th><th>개념+단어</th><th>문장학습</th></tr>
-      </thead>`;
-  const rows = dates
-    .map((d) => {
-      const dayItems = items.filter((x) => x.date === d);
-      const skip = dayItems.find((x) => x.source === "skip");
-      const DOW_KR = ["일", "월", "화", "수", "목", "금", "토"];
-      const dateObj = new Date(d + "T00:00:00Z");
-      const dayName = DOW_KR[dateObj.getUTCDay()];
-      const dateString = `<b>${d.slice(2).replace(/-/g, ".")} (${dayName})</b>`;
-      const tag = `data-date="${d}" onclick="handleDateClick(event, '${d}')" style="cursor:pointer;"`;
-      if (skip) {
-        return `<tr ${tag}><td >${dateString}</td><td colspan="12" style="color:#64748b;background:#f8fafc;">${skip.reason}</td></tr>`;
-      }
-      const m1 = dayItems.find(
-        (x) => x.source === "main" && x.lane === "main1"
-      );
-      const m2 = dayItems.find(
-        (x) => x.source === "main" && x.lane === "main2"
-      );
-      const v = dayItems.find((x) => x.source === "vocab");
-      const renderMainLane = (mainItem) => {
-        if (!mainItem) return `<td></td>`.repeat(5);
-        const title =
-          state.allMaterials.find((m) => m.material_id === mainItem.material_id)
-            ?.title || mainItem.material_id;
-        if (mainItem.isOT)
-          return `<td colspan="5" style="background: #F9FF00;">"${title}" OT</td>`;
-        if (mainItem.isReturn)
-          return `<td colspan="5" style="background: #e0f2fe;">"${title}" 복귀</td>`;
-        return `<td>${mainItem.lecture_range || ""}</td><td>${
-          mainItem.pages ? `p.${mainItem.pages}` : ""
-        }</td><td>${mainItem.wb ? `p.${mainItem.wb}` : ""}</td><td>${
-          mainItem.dt_vocab || ""
-        }</td><td>${mainItem.key_sents || ""}</td>`;
-      };
-      return `<tr ${tag}><td>${dateString}</td>${renderMainLane(
-        m1
-      )}${renderMainLane(m2)}<td>${v?.lecture_range || ""}</td><td>${
-        v?.vocab_range || ""
-      }</td></tr>`;
-    })
-    .join("");
-  $(
-    "#result"
-  ).innerHTML = `${studentHeader}${materialsHeaderHtml}<table class="table">${thead}<tbody>${rows}</tbody></table>`;
-  updateSelectionUI();
-}
 
 async function loadPlanForEditing(planId) {
   const plan = state.studentPlans.find((p) => p.planId === planId);
@@ -679,4 +831,82 @@ function deleteSkip() {
   delete state.userSkips[date];
   closeSkipModal();
   triggerPreview();
+}
+
+function renderPrintable(items, ctx) {
+  const dates = [...new Set(items.map((i) => i.date))].sort();
+  const studentHeader = `<div style="margin-bottom:12px;"><b>${ctx.studentNames.join(
+    ", "
+  )}</b> / ${ctx.startDate} ~ ${ctx.endDate}</div>`;
+  const usedMainMaterialIds = [
+    ...new Set(
+      items
+        .filter((it) => it.source === "main" && it.material_id)
+        .map((it) => it.material_id)
+    ),
+  ];
+  const usedMaterials = usedMainMaterialIds
+    .map((id) => state.allMaterials.find((m) => m.material_id === id))
+    .filter(Boolean);
+  const materialsHeaderHtml = `<div class="materials-header">${usedMaterials
+    .map(
+      (m) =>
+        `<div class="material-item"><div class="material-title">${
+          m.title
+        }</div><div class="material-lecture">${
+          m.lecture || "인강 정보 없음"
+        }</div></div>`
+    )
+    .join("")}</div>`;
+  const thead = `
+      <thead style="font-size: 12px; text-align: center;">
+        <tr><th rowspan="3" style="width:100px; vertical-align: middle;">날짜</th><th colspan="5">메인 1</th> <th colspan="5">메인 2</th> <th colspan="2">단어 DT</th></tr>
+        <tr><th colspan="3">수업 진도</th> <th colspan="2">티칭 챌린지</th><th colspan="3">수업 진도</th> <th colspan="2">티칭 챌린지</th><th rowspan="2" style="vertical-align: middle;">회차</th> <th rowspan="2" style="vertical-align: middle;">DT</th></tr>
+        <tr><th>인강</th><th>교재 page</th><th>WB</th><th>개념+단어</th><th>문장학습</th><th>인강</th><th>교재 page</th><th>WB</th><th>개념+단어</th><th>문장학습</th></tr>
+      </thead>`;
+  const rows = dates
+    .map((d) => {
+      const dayItems = items.filter((x) => x.date === d);
+      const skip = dayItems.find((x) => x.source === "skip");
+      const DOW_KR = ["일", "월", "화", "수", "목", "금", "토"];
+      const dateObj = new Date(d + "T00:00:00Z");
+      const dayName = DOW_KR[dateObj.getUTCDay()];
+      const dateString = `<b>${d.slice(2).replace(/-/g, ".")} (${dayName})</b>`;
+      const tag = `data-date="${d}" onclick="handleDateClick(event, '${d}')" style="cursor:pointer;"`;
+      if (skip) {
+        return `<tr ${tag}><td >${dateString}</td><td colspan="12" style="color:#64748b;background:#f8fafc;">${skip.reason}</td></tr>`;
+      }
+      const m1 = dayItems.find(
+        (x) => x.source === "main" && x.lane === "main1"
+      );
+      const m2 = dayItems.find(
+        (x) => x.source === "main" && x.lane === "main2"
+      );
+      const v = dayItems.find((x) => x.source === "vocab");
+      const renderMainLane = (mainItem) => {
+        if (!mainItem) return `<td></td>`.repeat(5);
+        const title =
+          state.allMaterials.find((m) => m.material_id === mainItem.material_id)
+            ?.title || mainItem.material_id;
+        if (mainItem.isOT)
+          return `<td colspan="5" style="background: #F9FF00;">"${title}" OT</td>`;
+        if (mainItem.isReturn)
+          return `<td colspan="5" style="background: #e0f2fe;">"${title}" 복귀</td>`;
+        return `<td>${mainItem.lecture_range || ""}</td><td>${
+          mainItem.pages ? `p.${mainItem.pages}` : ""
+        }</td><td>${mainItem.wb ? `p.${mainItem.wb}` : ""}</td><td>${
+          mainItem.dt_vocab || ""
+        }</td><td>${mainItem.key_sents || ""}</td>`;
+      };
+      return `<tr ${tag}><td>${dateString}</td>${renderMainLane(
+        m1
+      )}${renderMainLane(m2)}<td>${v?.lecture_range || ""}</td><td>${
+        v?.vocab_range || ""
+      }</td></tr>`;
+    })
+    .join("");
+  $(
+    "#result"
+  ).innerHTML = `${studentHeader}${materialsHeaderHtml}<table class="table">${thead}<tbody>${rows}</tbody></table>`;
+  updateSelectionUI();
 }
