@@ -494,16 +494,37 @@ function renderMaterialOptions() {
 // --- ★★★ 여기가 핵심 수정 부분 ★★★ ---
 
 let lastSelectedDate = null;
+
 window.handleDateClick = (event, date) => {
-  if (state.isInsertionMode) return; // 삽입 모드 중에는 날짜 재선택 방지
-  if (event.shiftKey && lastSelectedDate) {
-    state.selectionStart = lastSelectedDate < date ? lastSelectedDate : date;
-    state.selectionEnd = lastSelectedDate < date ? date : lastSelectedDate;
+  if (state.isInsertionMode) return; // 삽입 모드 중에는 클릭 방지
+
+  // 이전에 선택된 범위가 있거나, 아직 아무것도 선택하지 않았다면 새로 선택을 시작합니다.
+  const isNewSelection =
+    !state.selectionStart ||
+    (state.selectionStart &&
+      state.selectionEnd &&
+      state.selectionStart !== state.selectionEnd);
+
+  if (isNewSelection) {
+    // 새로운 시작점을 설정합니다.
+    state.selectionStart = date;
+    state.selectionEnd = date;
   } else {
-    state.selectionStart = state.selectionEnd = lastSelectedDate = date;
+    // 두 번째 클릭으로 범위를 완성합니다.
+    const firstClickDate = state.selectionStart;
+
+    // 두 번째 클릭한 날짜가 첫 번째 클릭보다 이전이면, 두 값을 교체해줍니다.
+    if (date < firstClickDate) {
+      state.selectionStart = date;
+      state.selectionEnd = firstClickDate;
+    } else {
+      state.selectionEnd = date;
+    }
   }
+
   updateSelectionUI();
 };
+
 function updateSelectionUI() {
   $$("#result tr[data-date]").forEach((row) => {
     const date = row.dataset.date;
