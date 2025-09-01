@@ -537,74 +537,103 @@ async function addBookToSegment(segmentId) {
     alert(`교재 추가 실패: ${e.message}`);
   }
 }
+
 async function insertBookIntoSelection() {
   const { start, end, targetSegment } = findTargetSegmentForInsertion();
   if (!targetSegment) {
     alert("교재를 삽입할 플랜 구간을 찾을 수 없습니다.");
     return;
   }
+
+  // 1. [이전 구간] 생성: 원래 계획에서 삽입 시작일 전날까지의 구간
+  const beforeSegment = {
+    ...targetSegment,
+    id: `seg_${Date.now()}_before`,
+    endDate: getPreviousDay(start),
+  };
+
+  // 2. [삽입 구간] 생성: 내신 기간처럼 완전히 새로운 계획을 넣을 빈 구간
+  //    모든 레인이 비어있는 상태로 생성됩니다.
+  const insertionSegment = {
+    id: `seg_${Date.now()}_insertion`,
+    startDate: start,
+    endDate: end,
+    days: targetSegment.days, // 요일 설정은 기존 구간을 따라감
+    lanes: { main1: [], main2: [], vocab: [] }, // ★ 여기가 핵심! 완전히 비웁니다.
+  };
+
+  // 3. [이후 구간] 생성: 삽입으로 인해 뒤로 밀려난 나머지 원래 계획
+  //    삽입 기간 직전까지의 진도를 계산해서, 그 다음 진도부터 시작하도록 설정합니다.
   const itemsBefore = await getPlanItems(
     targetSegment.startDate,
     getPreviousDay(start),
     targetSegment
   );
+
+  const lanesAfter = JSON.parse(JSON.stringify(targetSegment.lanes));
   const lastItemByLane = { main1: null, main2: null, vocab: null };
   itemsBefore
     .filter((item) => item.source !== "skip" && item.lane)
     .forEach((item) => {
       lastItemByLane[item.lane] = item;
     });
-  const lanesAfter = JSON.parse(JSON.stringify(targetSegment.lanes));
+
   for (const lane in lastItemByLane) {
     const lastItem = lastItemByLane[lane];
     if (lastItem) {
       const laneDataAfter = lanesAfter[lane];
-      const bookAfterIndex = laneDataAfter.findIndex(
+      const bookIndex = laneDataAfter.findIndex(
         (b) => b.materialId === lastItem.material_id
       );
-      if (bookAfterIndex > -1) {
-        const bookAfter = laneDataAfter[bookAfterIndex];
-        const lastUnitIndex = bookAfter.units.findIndex(
+      if (bookIndex > -1) {
+        const book = laneDataAfter[bookIndex];
+        const lastUnitIndex = book.units.findIndex(
           (u) => u.unit_code === lastItem.unit_code
         );
-        if (lastUnitIndex > -1 && lastUnitIndex + 1 < bookAfter.units.length) {
-          bookAfter.startUnitCode =
-            bookAfter.units[lastUnitIndex + 1].unit_code;
+
+        if (lastUnitIndex > -1 && lastUnitIndex + 1 < book.units.length) {
+          // 다음 차시부터 시작하도록 시작점 조정
+          book.startUnitCode = book.units[lastUnitIndex + 1].unit_code;
         } else {
-          laneDataAfter.splice(bookAfterIndex, 1);
+          // 한 권이 완전히 끝났으면, 그 다음 책부터 시작하도록 조정
+          laneDataAfter.splice(bookIndex, 1);
         }
       }
     }
   }
-  const beforeSegment = { ...targetSegment, endDate: getPreviousDay(start) };
-  const newSegment = {
-    id: `seg_${Date.now()}_new`,
-    startDate: start,
-    endDate: end,
-    days: targetSegment.days,
-    lanes: { main1: [], main2: [], vocab: [] },
-  };
+
   const afterSegment = {
     ...targetSegment,
     id: `seg_${Date.now()}_after`,
-    startDate: getNextDay(end),
-    lanes: lanesAfter,
+    startDate: getNextDay(end), // 삽입 구간이 끝난 다음 날부터 시작
+    lanes: lanesAfter, // 뒤로 밀린 진도가 담긴 레인 정보
   };
+
+  // 4. 기존 1개의 구간을 새로 만든 3개의 구간으로 교체합니다.
   const originalIndex = state.planSegments.findIndex(
     (s) => s.id === targetSegment.id
   );
-  state.planSegments.splice(
-    originalIndex,
-    1,
+
+  // 날짜가 유효한 구간들만 필터링해서 삽입
+  const segmentsToInsert = [
     beforeSegment,
-    newSegment,
-    afterSegment
-  );
-  state.planSegments = state.planSegments.filter(
-    (s) => s.startDate <= s.endDate
-  );
-  await addBookToSegment(newSegment.id);
+    insertionSegment,
+    afterSegment,
+  ].filter((s) => s.startDate <= s.endDate);
+
+  state.planSegments.splice(originalIndex, 1, ...segmentsToInsert);
+
+  // 5. 방금 만든 '삽입 구간'에 사용자가 선택한 교재를 추가합니다.
+  //    이렇게 해야 '메인1', '메인2', '단어' 책을 순서대로 추가할 수 있습니다.
+  await addBookToSegment(insertionSegment.id);
+
+  // 삽입 모드 종료 및 UI 초기화
+  state.isInsertionMode = false;
+  $("#btnAddBook").textContent = "레인에 추가";
+  state.selectionStart = state.selectionEnd = lastSelectedDate = null;
+  updateSelectionUI();
 }
+
 function findTargetSegmentForInsertion() {
   const start = state.selectionStart;
   const end = state.selectionEnd;
