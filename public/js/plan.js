@@ -545,6 +545,8 @@ function renderPrintable(items, ctx) {
       </tr>
       <tr>
         <th>인강</th><th>교재 page</th><th>WB</th><th>개념+단어</th><th>문장학습</th>
+        {/* 👇 [수정] 메인 2의 헤더 추가 */}
+        <th>인강</th><th>교재 page</th><th>WB</th><th>개념+단어</th><th>문장학습</th>
       </tr>
     </thead>`;
   const rows = dates
