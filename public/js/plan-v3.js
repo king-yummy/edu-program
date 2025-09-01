@@ -92,25 +92,35 @@ const triggerPreview = debounce(async () => {
   );
 }, 500);
 
-// ▼▼▼ [추가] 이 함수를 복사해서 붙여넣으세요. ▼▼▼
 function updatePlanSegmentDetails() {
   if (state.planSegments.length > 0 && state.selectedStudent) {
-    const segment = state.planSegments[0];
-    segment.startDate = $("#startDate").value;
-    segment.endDate = $("#endDate").value;
+    // 가장 첫 번째 구간의 시작일을 업데이트합니다.
+    state.planSegments[0].startDate = $("#startDate").value;
 
+    // 가장 마지막 구간의 종료일을 업데이트합니다.
+    const lastSegment = state.planSegments[state.planSegments.length - 1];
+    lastSegment.endDate = $("#endDate").value;
+
+    // 요일 설정은 모든 구간에 동일하게 적용합니다.
     const defaultSchedule =
       state.allClasses.find((c) => c.id === state.selectedStudent.class_id)
         ?.schedule_days || "MON,WED,FRI";
-    segment.days = $("#customDays").value || defaultSchedule;
+    const newDays = $("#customDays").value || defaultSchedule;
+    for (const segment of state.planSegments) {
+      segment.days = newDays;
+    }
 
+    // 날짜 변경으로 인해 유효하지 않게 된 (시작일 > 종료일) 구간이 있다면 제거합니다.
+    state.planSegments = state.planSegments.filter(
+      (s) => s.startDate <= s.endDate
+    );
+
+    // 변경된 내용으로 UI와 미리보기를 다시 렌더링합니다.
     renderAllLanes();
     document.dispatchEvent(new Event("renderLanesComplete"));
     triggerPreview();
   }
 }
-// ▲▲▲ [추가] 여기까지 ▲▲▲
-
 document.addEventListener("DOMContentLoaded", boot);
 
 async function boot() {
@@ -877,6 +887,14 @@ async function loadPlanForEditing(planId) {
     }
   }
   state.planSegments = segmentsToLoad;
+
+   if (state.planSegments.length > 0) {
+    $("#startDate").value = state.planSegments[0].startDate;
+    $("#endDate").value = state.planSegments[state.planSegments.length - 1].endDate;
+    // 요일은 첫 번째 구간의 설정을 대표로 표시합니다.
+    $("#customDays").value = state.planSegments[0].days || "";
+  }
+  
   if (plan.context && Array.isArray(plan.context.userSkips)) {
     state.userSkips = plan.context.userSkips.reduce((acc, skip) => {
       acc[skip.date] = { type: skip.type, reason: skip.reason };
