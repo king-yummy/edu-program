@@ -1,8 +1,6 @@
 // /api/plans.js — 최종 완성본
 
 import { kv } from "@vercel/kv";
-import { generatePlan } from "../lib/schedule.js";
-import { getEvents } from "../lib/kv.js";
 
 function isKvReady() {
   return !!(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
