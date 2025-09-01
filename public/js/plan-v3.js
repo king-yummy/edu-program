@@ -1105,9 +1105,9 @@ function deleteSkip() {
 
 function renderPrintable(items, ctx) {
   const dates = [...new Set(items.map((i) => i.date))].sort();
-  const studentHeader = `<div style="margin-bottom:12px;"><b>${ctx.studentNames.join(
+  const studentHeader = `<div class="student-header">${ctx.studentNames.join(
     ", "
-  )}</b> / ${ctx.startDate} ~ ${ctx.endDate}</div>`;
+  )} / ${ctx.startDate} ~ ${ctx.endDate}</div>`;
   const instructionText = `
     <div class="muted small print-hide" style="margin-bottom: 12px; padding: 8px; background: #f8fafc; border-radius: 8px;">
       <b>💡 사용법:</b> 날짜를 그냥 클릭하면 <b>결석 처리</b>, <code>Ctrl</code> 또는 <code>Cmd</code>를 누른 채로 클릭하면 <b>기간 선택(교재 삽입용)</b>이 됩니다.
