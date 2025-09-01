@@ -274,23 +274,26 @@
                 <div class="mt">
                   <hr style="border-color: #f1f5f9; margin: 16px 0" />
                   <label>교재 추가</label>
-                  <div class="grid2">
-                    <div>
-                      <select id="selMaterialCategory"></select>
+
+                  <div id="materialSelector">
+                    <div class="row">
+                      <select id="selMaterialCategory" style="flex: 1"></select>
+                      <select
+                        id="selMaterialSubCategory"
+                        style="flex: 1"
+                      ></select>
                     </div>
-                    <div>
-                      <select id="selMaterial"></select>
+                    <div class="row mt">
+                      <select id="selMaterial" style="flex: 2"></select>
+                      <select id="selLane" style="flex: 1">
+                        <option value="main1">메인 1</option>
+                        <option value="main2">메인 2</option>
+                        <option value="vocab">어휘</option>
+                      </select>
+                      <button class="btn" id="btnAddBook" style="flex: 1">
+                        레인에 추가
+                      </button>
                     </div>
-                  </div>
-                  <div class="row mt">
-                    <select id="selLane" style="flex: 1">
-                      <option value="main1">메인 1</option>
-                      <option value="main2">메인 2</option>
-                      <option value="vocab">어휘</option>
-                    </select>
-                    <button class="btn" id="btnAddBook" style="flex: 1">
-                      레인에 추가
-                    </button>
                   </div>
                 </div>
 

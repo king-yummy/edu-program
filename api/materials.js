@@ -14,8 +14,10 @@ export default async function handler(req, res) {
       type: String(r.type || "MAIN").toUpperCase(),
       title: String(r.title ?? r.name ?? ""),
       lecture: String(r.lecture || ""),
-      // [추가] 교재 카테고리 정보
-      category: String(r.category || "기타"),
+      // [수정] 빈 category를 "기타"로 묶지 않고 그대로 둠
+      category: String(r.category || ""),
+      // [수정] 빈 subcategory를 "공통"으로 묶지 않고 그대로 둠
+      subcategory: String(r.subcategory || ""),
     }));
     return res.status(200).json(out);
   } catch {

@@ -253,22 +253,101 @@ function clearPlanEditor() {
   $("#result").innerHTML = "교재를 추가하고 기간을 설정하세요.";
 }
 
+// /public/js/plan-v3.js 파일의 renderMaterialOptions 함수
+
 function renderMaterialOptions() {
-  const categories = [...new Set(state.allMaterials.map((m) => m.category))];
-  $("#selMaterialCategory").innerHTML = categories
-    .map((c) => `<option value="${c}">${c}</option>`)
-    .join("");
+  const selCat = $("#selMaterialCategory");
+  const selSubCat = $("#selMaterialSubCategory");
+  const selMat = $("#selMaterial");
 
-  const selectedCategory = $("#selMaterialCategory").value;
-  const materialsInCategory = state.allMaterials.filter(
-    (m) => m.category === selectedCategory
-  );
+  const uncategorized = state.allMaterials.filter((m) => !m.category);
+  const categories = [
+    ...new Set(
+      state.allMaterials.filter((m) => m.category).map((m) => m.category)
+    ),
+  ];
 
-  $("#selMaterial").innerHTML =
-    `<option value="">교재 선택</option>` +
-    materialsInCategory
+  // 1. 카테고리 드롭다운 채우기
+  let catOptions = categories.map((c) => `<option value="${c}">${c}</option>`);
+  if (uncategorized.length > 0) {
+    // 미분류 교재가 있으면 "(미분류 교재)" 옵션 추가
+    catOptions.unshift(
+      `<option value="--uncategorized--">(미분류 교재)</option>`
+    );
+  }
+  selCat.innerHTML = catOptions.join("");
+
+  // 2. 연쇄 동작 설정
+  selCat.onchange = () => {
+    const selectedCategory = selCat.value;
+
+    if (selectedCategory === "--uncategorized--") {
+      // (미분류 교재) 선택 시
+      selSubCat.style.display = "none"; // 서브카테고리 숨김
+      selMat.innerHTML = uncategorized
+        .map((m) => `<option value="${m.material_id}">${m.title}</option>`)
+        .join("");
+    } else {
+      // 실제 카테고리 선택 시
+      selSubCat.style.display = "block"; // 서브카테고리 보임
+
+      const materialsInCategory = state.allMaterials.filter(
+        (m) => m.category === selectedCategory
+      );
+      const subcategories = [
+        ...new Set(
+          materialsInCategory
+            .filter((m) => m.subcategory)
+            .map((m) => m.subcategory)
+        ),
+      ];
+      const noSubcategory = materialsInCategory.filter((m) => !m.subcategory);
+
+      let subCatOptions = subcategories.map(
+        (sc) => `<option value="${sc}">${sc}</option>`
+      );
+      if (noSubcategory.length > 0) {
+        // 서브카테고리가 없는 교재가 있으면 "(바로 선택)" 옵션 추가
+        subCatOptions.unshift(
+          `<option value="--direct--">(바로 선택)</option>`
+        );
+      }
+      selSubCat.innerHTML = subCatOptions.join("");
+      selSubCat.onchange(); // 서브카테고리 변경 이벤트 즉시 실행
+    }
+  };
+
+  selSubCat.onchange = () => {
+    const selectedCategory = selCat.value;
+    const selectedSubCategory = selSubCat.value;
+
+    if (selectedCategory === "--uncategorized--") return;
+
+    let materialsToShow = [];
+    if (selectedSubCategory === "--direct--") {
+      materialsToShow = state.allMaterials.filter(
+        (m) => m.category === selectedCategory && !m.subcategory
+      );
+    } else {
+      materialsToShow = state.allMaterials.filter(
+        (m) =>
+          m.category === selectedCategory &&
+          m.subcategory === selectedSubCategory
+      );
+    }
+    selMat.innerHTML = materialsToShow
       .map((m) => `<option value="${m.material_id}">${m.title}</option>`)
       .join("");
+  };
+
+  // 3. 초기 상태 설정
+  if (selCat.options.length > 0) {
+    selCat.onchange();
+  } else {
+    // 교재가 하나도 없을 경우
+    selSubCat.style.display = "none";
+    selMat.innerHTML = `<option value="">등록된 교재가 없습니다</option>`;
+  }
 }
 
 async function addBookToLane() {
@@ -321,7 +400,9 @@ function renderLane(lane) {
             (u) =>
               `<option value="${u.unit_code}" ${
                 u.unit_code === b.startUnitCode ? "selected" : ""
-              }>${u.unit_code}</option>`
+              }>${u.lecture_range || u.lecture || ""} — ${
+                u.title || ""
+              }</option>`
           )
           .join("");
         const endOptions = b.units
@@ -329,7 +410,9 @@ function renderLane(lane) {
             (u) =>
               `<option value="${u.unit_code}" ${
                 u.unit_code === b.endUnitCode ? "selected" : ""
-              }>${u.unit_code}</option>`
+              }>${u.lecture_range || u.lecture || ""} — ${
+                u.title || ""
+              }</option>`
           )
           .join("");
         return `
