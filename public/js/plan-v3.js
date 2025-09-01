@@ -828,8 +828,12 @@ async function addBookToLane() {
       exitInsertionMode();
     }
   } else {
+    // ▼▼▼ 수정된 부분 ▼▼▼
+    // 플랜의 가장 마지막 구간을 선택하도록 변경합니다.
     const segment =
-      state.planSegments.length > 0 ? state.planSegments[0] : null;
+      state.planSegments.length > 0
+        ? state.planSegments[state.planSegments.length - 1]
+        : null;
     if (segment) {
       await addBookToSegment(segment.id);
     } else {
