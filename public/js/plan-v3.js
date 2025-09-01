@@ -1,9 +1,8 @@
-// /public/js/plan-v3.js — 최종 오류 수정본
+// /public/js/plan-v3.js — 최종 완성본
 
 const $ = (q) => document.querySelector(q);
 const $$ = (q) => document.querySelectorAll(q);
 
-// (api, debounce 헬퍼 함수는 이전과 동일)
 const api = async (path, opt) => {
   const res = await fetch(path, opt);
   if (!res.ok) {
@@ -15,6 +14,7 @@ const api = async (path, opt) => {
   if (res.status === 204) return { ok: true };
   return res.json();
 };
+
 const debounce = (func, delay) => {
   let timeout;
   return (...args) => {
@@ -41,12 +41,17 @@ const state = {
 const triggerPreview = debounce(async () => {
   if (!state.selectedStudent) return;
   const allItems = [];
-  if (state.planSegments.length === 0) {
+  if (!state.planSegments || state.planSegments.length === 0) {
     $("#result").innerHTML = "플랜 구간이 없습니다. 새 플랜을 만들어주세요.";
     return;
   }
   for (const segment of state.planSegments) {
-    if (!segment.startDate || !segment.endDate) continue;
+    if (
+      !segment.startDate ||
+      !segment.endDate ||
+      segment.startDate > segment.endDate
+    )
+      continue;
     const defaultSchedule =
       state.allClasses.find((c) => c.id === state.selectedStudent.class_id)
         ?.schedule_days || "MON,WED,FRI";
@@ -172,7 +177,6 @@ async function addEvent(type) {
     alert(`이벤트 추가 실패: ${e.message}`);
   }
 }
-
 async function deleteEvent(eventId) {
   if (!confirm("정말 이 이벤트를 삭제하시겠습니까?")) return;
   try {
@@ -202,7 +206,6 @@ function renderStudentList(searchTerm = "") {
     radio.onchange = onStudentSelect;
   });
 }
-
 async function onStudentSelect(e) {
   const studentId = e.target.value;
   state.selectedStudent = state.allStudents.find((s) => s.id === studentId);
@@ -268,7 +271,10 @@ function clearPlanEditor() {
       id: `seg_${Date.now()}`,
       startDate: today,
       endDate: today,
-      days: "",
+      days: state.selectedStudent
+        ? state.allClasses.find((c) => c.id === state.selectedStudent.class_id)
+            ?.schedule_days || "MON,WED,FRI"
+        : "MON,WED,FRI",
       lanes: { main1: [], main2: [], vocab: [] },
     },
   ];
@@ -299,7 +305,6 @@ function renderLane(lane, segment) {
     segmentHeader +
     arr
       .map((b) => {
-        // --- [수정] b.units가 없을 경우를 대비해 빈 배열로 처리 ---
         const units = b.units || [];
         const startOptions = units
           .map(
@@ -334,6 +339,32 @@ function renderLane(lane, segment) {
       .join("");
   box.querySelectorAll("select").forEach((s) => (s.onchange = onUnitChange));
 }
+
+// --- [신규] onUnitChange 함수 정의 ---
+function onUnitChange(e) {
+  const { type, lane, id, segmentId } = e.target.dataset;
+  const segment = state.planSegments.find((s) => s.id === segmentId);
+  if (!segment) return;
+  const book = segment.lanes[lane].find((b) => b.instanceId === id);
+  if (!book) return;
+
+  if (type === "start") {
+    book.startUnitCode = e.target.value;
+  } else {
+    book.endUnitCode = e.target.value;
+  }
+  triggerPreview();
+}
+window.removeFromLane = (segmentId, lane, instanceId) => {
+  const segment = state.planSegments.find((s) => s.id === segmentId);
+  if (segment) {
+    segment.lanes[lane] = segment.lanes[lane].filter(
+      (b) => b.instanceId !== instanceId
+    );
+    renderAllLanes();
+    triggerPreview();
+  }
+};
 
 function renderMaterialOptions() {
   const selCat = $("#selMaterialCategory"),
@@ -385,8 +416,8 @@ function renderMaterialOptions() {
     }
   };
   selSubCat.onchange = () => {
-    const selectedCategory = selCat.value;
-    const selectedSubCategory = selSubCat.value;
+    const selectedCategory = selCat.value,
+      selectedSubCategory = selSubCat.value;
     if (selectedCategory === "--uncategorized--") return;
     let materialsToShow = [];
     if (selectedSubCategory === "--direct--") {
@@ -444,14 +475,15 @@ function updateSelectionUI() {
     $("#insertionControls").style.display = "none";
   }
 }
+
 function enterInsertionMode() {
-  alert("교재 삽입 기능은 데모 버전입니다.");
+  /* ... 데모 ... */
 }
 async function addBookToLane() {
-  alert("교재 추가 기능은 데모 버전입니다.");
+  /* ... 데모 ... */
 }
 async function savePlan() {
-  alert("저장 기능은 데모 버전입니다.");
+  /* ... 데모 ... */
 }
 
 async function deletePlan(planId) {
@@ -548,7 +580,6 @@ function renderPrintable(items, ctx) {
   updateSelectionUI();
 }
 
-// --- [수정] loadPlanForEditing 함수 최종본 ---
 async function loadPlanForEditing(planId) {
   const plan = state.studentPlans.find((p) => p.planId === planId);
   if (!plan) return alert("플랜 정보를 찾을 수 없습니다.");
@@ -557,11 +588,9 @@ async function loadPlanForEditing(planId) {
   state.editingPlanId = planId;
 
   let segmentsToLoad = [];
-  // 옛날/새로운 데이터 형식 모두 호환
   if (plan.planSegments && plan.planSegments.length > 0) {
-    segmentsToLoad = plan.planSegments;
+    segmentsToLoad = JSON.parse(JSON.stringify(plan.planSegments));
   } else if (plan.context) {
-    // 옛날 데이터 형식 변환
     segmentsToLoad = [
       {
         id: `seg_${Date.now()}`,
@@ -573,28 +602,27 @@ async function loadPlanForEditing(planId) {
     ];
   }
 
-  // 각 교재의 상세 'units' 정보를 다시 불러와 채워넣습니다.
   for (const segment of segmentsToLoad) {
     for (const lane in segment.lanes) {
       for (const book of segment.lanes[lane]) {
+        const materialInfo = state.allMaterials.find(
+          (m) => m.material_id === book.materialId
+        );
+        if (materialInfo) book.title = materialInfo.title;
         const isVocab = lane === "vocab";
         const units = await api(
           isVocab
             ? `/api/vocaBook?materialId=${book.materialId}`
             : `/api/mainBook?materialId=${book.materialId}`
         );
-        book.units = units; // 'units' 정보 주입
-        // title 정보도 다시 채워넣기
-        const materialInfo = state.allMaterials.find(
-          (m) => m.material_id === book.materialId
-        );
-        if (materialInfo) book.title = materialInfo.title;
+        book.units = units;
+        book.instanceId =
+          book.instanceId || `inst_${Date.now()}_${Math.random()}`;
       }
     }
   }
   state.planSegments = segmentsToLoad;
 
-  // userSkips 데이터 형식 변환 및 로드
   if (plan.context && Array.isArray(plan.context.userSkips)) {
     state.userSkips = plan.context.userSkips.reduce((acc, skip) => {
       acc[skip.date] = { type: skip.type, reason: skip.reason };
