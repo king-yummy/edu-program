@@ -150,253 +150,179 @@
         border-radius: 8px;
         margin-top: 6px;
       }
+      /* [추가] 새로운 레이아웃 스타일 */
+      .main-layout {
+        display: grid;
+        grid-template-columns: 400px 1fr;
+        gap: 24px;
+        align-items: start;
+      }
+      .config-panel {
+        position: sticky;
+        top: 24px;
+        max-height: calc(100vh - 48px);
+        overflow-y: auto;
+      }
+      #studentSearchInput {
+        width: 100%;
+        padding: 12px;
+        margin-bottom: 12px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+      }
+      .event-section .row {
+        align-items: flex-end;
+        margin-bottom: 12px;
+      }
     </style>
   </head>
   <body>
     <nav class="nav">
       <div class="container">
-        <div class="brand">LessonPlan</div>
+        <div class="brand">LessonPlan v3</div>
         <a href="./plan.html" class="active">플랜 생성</a>
       </div>
     </nav>
 
     <main class="container space">
-      <div class="grid2" style="align-items: start">
-        <section class="card">
-          <div class="card-h">반 관리</div>
-          <div class="card-b">
-            <div class="mb">
-              <label>반 선택</label>
-              <select id="selClass"></select>
-            </div>
-            <div class="mt">
-              <label>시험 월</label>
-              <div class="month-nav">
-                <button id="btnPrevMonth">◀</button>
-                <div id="testMonthDisplay" class="month-display"></div>
-                <button id="btnNextMonth">▶</button>
+      <section class="card event-section">
+        <div class="card-h">휴일 및 이벤트 관리</div>
+        <div class="card-b">
+          <div class="grid2">
+            <div>
+              <label>전체 설정</label>
+              <div class="row">
+                <input type="date" id="eventDateAll" />
+                <input
+                  id="eventTitleAll"
+                  placeholder="내용 (예: 학원 여름방학)"
+                />
+                <button id="btnAddEventAll" class="btn">추가</button>
               </div>
             </div>
-            <div class="mt">
-              <label>시험 일정</label>
-              <div id="testList" class="list" style="min-height: 120px"></div>
-            </div>
-            <div class="mt">
-              <label>새 시험 추가</label>
+            <div>
+              <label>부분 설정</label>
               <div class="row">
-                <input type="date" id="newTestDate" style="flex: 1.5" />
-                <select id="newTestTitle" style="flex: 2"></select>
-                <button id="btnTestAdd" class="btn" style="flex: 1">
+                <select id="eventScope" style="flex: 2">
+                  <option value="school">학교별</option>
+                  <option value="grade">학년별</option>
+                  <option value="class">반별</option>
+                </select>
+                <input
+                  id="eventScopeValue"
+                  placeholder="값 (예: A중학교, 3, C-101)"
+                  style="flex: 3"
+                />
+                <input type="date" id="eventDateScoped" style="flex: 2" />
+                <input
+                  id="eventTitleScoped"
+                  placeholder="내용"
+                  style="flex: 3"
+                />
+                <button id="btnAddEventScoped" class="btn" style="flex: 1">
                   추가
                 </button>
               </div>
             </div>
           </div>
-        </section>
+          <div id="eventList" class="list mt" style="max-height: 150px"></div>
+        </div>
+      </section>
 
-        <section class="card">
-          <div class="card-h">학생 관리</div>
-          <div
-            id="planStatus"
-            style="
-              padding: 10px 16px;
-              background-color: #e0f2fe;
-              color: #0c4a6e;
-              font-size: 14px;
-              display: none;
-            "
-          ></div>
-          <div class="card-b">
-            <div class="mb">
-              <label>반</label>
-              <select
-                id="selClassInfo"
-                disabled
-                style="background: #f1f5f9"
-              ></select>
-            </div>
-
-            <div class="mt">
-              <label>학생 (저장된 플랜: 💾)</label>
+      <div class="main-layout">
+        <div class="config-panel">
+          <section class="card">
+            <div class="card-h">학생 선택</div>
+            <div class="card-b">
+              <input id="studentSearchInput" placeholder="학생 이름 검색..." />
               <div
                 id="studentList"
                 class="list"
-                style="max-height: 150px; overflow-y: auto"
-              ></div>
-              <button
-                id="btnManagePlans"
-                class="btn no-print"
-                style="
-                  width: 100%;
-                  margin-top: 10px;
-                  display: none;
-                  background: #64748b;
-                "
-              >
-                선택한 학생의 기존 플랜 관리
-              </button>
-            </div>
-            <div class="mt">
-              <label>시작일</label>
-              <input type="date" id="startDate" />
-            </div>
-            <div class="mt">
-              <label>끝 날짜</label>
-              <input type="date" id="endDate" />
-            </div>
-            <div class="mt">
-              <label>요일 커스텀(쉼표)</label>
-              <input id="customDays" placeholder="MON,WED,FRI" />
-            </div>
-          </div>
-        </section>
-      </div>
-
-      <section class="card">
-        <div class="card-h">교재 선택</div>
-        <div class="card-b grid2">
-          <div>
-            <div class="muted mb">메인 1</div>
-            <div class="row">
-              <select id="selMain1"></select>
-              <button class="btn no-print" id="btnAddMain1">추가</button>
-            </div>
-            <div id="laneMain1" class="mt"></div>
-          </div>
-          <div>
-            <div class="muted mb">메인 2</div>
-            <div class="row">
-              <select id="selMain2"></select>
-              <button class="btn no-print" id="btnAddMain2">추가</button>
-            </div>
-            <div id="laneMain2" class="mt"></div>
-          </div>
-          <div>
-            <div class="muted mb">어휘</div>
-            <div class="row">
-              <select id="selVocab"></select>
-              <button class="btn no-print" id="btnAddVocab">추가</button>
-            </div>
-            <div id="laneVocab" class="mt"></div>
-          </div>
-        </div>
-      </section>
-
-      <section class="card">
-        <div class="card-h">생성 / 내보내기</div>
-        <div class="card-b row">
-          <div class="muted">
-            * 학생을 선택하여 플랜을 생성, 수정, 저장할 수 있습니다.
-          </div>
-          <div class="row-right">
-            <button class="btn no-print" id="btnPreview">미리보기</button>
-            <button
-              class="btn no-print"
-              id="btnSave"
-              style="background: #10b981"
-            >
-              저장하기
-            </button>
-            <button class="btn no-print" id="btnPrint">PDF로 저장</button>
-          </div>
-        </div>
-      </section>
-
-      <section class="card">
-        <div class="card-h">결과 (인쇄용 미리보기)</div>
-        <div class="card-b" id="result">
-          옵션을 선택한 뒤 ‘미리보기’를 눌러주세요.
-        </div>
-      </section>
-
-      <div
-        id="skipModal"
-        class="no-print"
-        style="
-          display: none;
-          position: fixed;
-          inset: 0;
-          background: #0005;
-          align-items: center;
-          justify-content: center;
-          z-index: 50;
-        "
-      >
-        <div
-          style="
-            background: #fff;
-            color: #0f172a;
-            border-radius: 12px;
-            width: 360px;
-            max-width: 90%;
-            padding: 16px;
-            box-shadow: 0 10px 30px #0003;
-          "
-        >
-          <div style="font-weight: 700; margin-bottom: 8px">날짜 상태 변경</div>
-          <div
-            class="muted"
-            id="skipDateLabel"
-            style="margin-bottom: 10px"
-          ></div>
-          <div style="display: flex; gap: 8px; margin-bottom: 8px">
-            <button class="btn" data-sel="vacation" style="flex: 1">
-              휴가
-            </button>
-            <button class="btn" data-sel="sick" style="flex: 1">질병</button>
-            <button class="btn" data-sel="other" style="flex: 1">기타</button>
-          </div>
-          <input
-            id="skipReason"
-            placeholder="기타 사유(선택)"
-            style="
-              width: 100%;
-              margin-bottom: 10px;
-              padding: 10px;
-              border: 1px solid #e5e7eb;
-              border-radius: 10px;
-            "
-          />
-          <div style="display: flex; gap: 8px; justify-content: flex-end">
-            <button id="btnSkipDelete" class="btn" style="background: #ef4444">
-              삭제
-            </button>
-            <button id="btnSkipSave" class="btn">저장</button>
-            <button id="btnSkipClose" class="btn" style="background: #94a3b8">
-              닫기
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div id="planActionModal" class="modal-overlay no-print">
-        <div class="modal-content">
-          <div class="modal-title" id="modalStudentName"></div>
-          <p>어떤 작업을 하시겠어요?</p>
-          <div class="modal-actions">
-            <button id="btnAddNewPlan" class="btn">
-              새 기간 플랜 추가하기
-            </button>
-            <div style="margin-top: 16px">
-              <label>기존 플랜 수정/삭제하기</label>
-              <div
-                id="existingPlansList"
-                class="list"
-                style="max-height: 140px"
+                style="max-height: 200px"
               ></div>
             </div>
-            <button
-              id="btnCancelModal"
-              class="btn"
-              style="background: #94a3b8; margin-top: 20px"
-            >
-              취소
-            </button>
-          </div>
+          </section>
+
+          <section class="card">
+            <div class="card-h" id="planConfigHeader">
+              플랜 설정 (학생을 선택하세요)
+            </div>
+            <div class="card-b">
+              <div id="planActions" style="display: none">
+                <div id="existingPlans" class="mb"></div>
+                <button id="btnAddNewPlan" class="btn" style="width: 100%">
+                  새 레슨플랜 만들기
+                </button>
+              </div>
+
+              <div id="planEditor" style="display: none">
+                <div class="grid2">
+                  <div>
+                    <label>시작일</label>
+                    <input type="date" id="startDate" />
+                  </div>
+                  <div>
+                    <label>종료일</label>
+                    <input type="date" id="endDate" />
+                  </div>
+                </div>
+                <div class="mt">
+                  <label>요일 커스텀 (쉼표)</label>
+                  <input id="customDays" placeholder="MON,WED,FRI" />
+                </div>
+
+                <div class="mt">
+                  <hr style="border-color: #f1f5f9; margin: 16px 0" />
+                  <label>교재 추가</label>
+                  <div class="grid2">
+                    <div>
+                      <select id="selMaterialCategory"></select>
+                    </div>
+                    <div>
+                      <select id="selMaterial"></select>
+                    </div>
+                  </div>
+                  <div class="row mt">
+                    <select id="selLane" style="flex: 1">
+                      <option value="main1">메인 1</option>
+                      <option value="main2">메인 2</option>
+                      <option value="vocab">어휘</option>
+                    </select>
+                    <button class="btn" id="btnAddBook" style="flex: 1">
+                      레인에 추가
+                    </button>
+                  </div>
+                </div>
+
+                <div id="laneMain1" class="mt"></div>
+                <div id="laneMain2" class="mt"></div>
+                <div id="laneVocab" class="mt"></div>
+
+                <div class="row mt" style="margin-top: 20px">
+                  <button
+                    class="btn no-print"
+                    id="btnSave"
+                    style="background: #10b981"
+                  >
+                    저장하기
+                  </button>
+                  <button class="btn no-print" id="btnPrint">PDF로 저장</button>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div class="preview-panel">
+          <section class="card">
+            <div class="card-h">결과 미리보기</div>
+            <div class="card-b" id="result">
+              왼쪽에서 학생을 선택하고 플랜을 설정해주세요.
+            </div>
+          </section>
         </div>
       </div>
     </main>
-
-    <script defer src="./js/plan.js"></script>
+    <script defer src="./js/plan-v3.js"></script>
   </body>
 </html>
