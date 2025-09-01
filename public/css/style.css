@@ -170,3 +170,44 @@ button {
   padding: 4px 10px;
   font-size: 12px;
 }
+
+@media print {
+  /* --- 인쇄 전용 스타일 --- */
+
+  /* 1. 화면의 불필요한 부분들(설정창, 네비게이션바 등)을 모두 숨깁니다. */
+  body > .nav,
+  .config-panel,
+  .event-section,
+  .no-print,
+  .print-hide,
+  #insertionControls {
+    display: none !important;
+  }
+
+  /* 2. 미리보기 영역만 꽉 채워서 보이도록 설정합니다. */
+  body,
+  .container {
+    padding: 0;
+    margin: 0;
+    background: #fff;
+  }
+  .main-layout {
+    display: block !important;
+  }
+  .card {
+    border: none;
+    box-shadow: none;
+    margin: 0;
+  }
+
+  /* 3. 테이블이 페이지 너비에 맞게 잘 보이도록 합니다. */
+  .table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  /* 4. 이 클래스가 있는 행 다음에 페이지를 나눕니다. */
+  .page-break-after {
+    page-break-after: always;
+  }
+}

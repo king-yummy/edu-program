@@ -148,7 +148,7 @@ function attachEventListeners() {
   $("#selMaterialCategory").onchange = renderMaterialOptions;
   $("#btnAddBook").onclick = addBookToLane;
   $("#btnSave").onclick = savePlan;
-  $("#btnPrint").onclick = () => window.print();
+  $("#btnPrint").onclick = prepareAndPrint;
   $("#btnInsertMode").onclick = toggleInsertionMode;
   $("#startDate").onchange = updatePlanSegmentDetails;
   $("#endDate").onchange = updatePlanSegmentDetails;
@@ -1109,7 +1109,7 @@ function renderPrintable(items, ctx) {
     ", "
   )}</b> / ${ctx.startDate} ~ ${ctx.endDate}</div>`;
   const instructionText = `
-    <div class="muted small" style="margin-bottom: 12px; padding: 8px; background: #f8fafc; border-radius: 8px;">
+    <div class="muted small print-hide" style="margin-bottom: 12px; padding: 8px; background: #f8fafc; border-radius: 8px;">
       <b>💡 사용법:</b> 날짜를 그냥 클릭하면 <b>결석 처리</b>, <code>Ctrl</code> 또는 <code>Cmd</code>를 누른 채로 클릭하면 <b>기간 선택(교재 삽입용)</b>이 됩니다.
     </div>
   `;
@@ -1208,4 +1208,26 @@ function renderPrintable(items, ctx) {
     "#result"
   ).innerHTML = `${studentHeader}${instructionText}${materialsHeaderHtml}<table class="table">${thead}<tbody>${rows}</tbody></table>`;
   updateSelectionUI();
+}
+
+function prepareAndPrint() {
+  // 1. 이전에 추가했을 수 있는 페이지 나누기 클래스를 모두 제거합니다.
+  $$(".page-break-after").forEach((el) =>
+    el.classList.remove("page-break-after")
+  );
+
+  // 2. 미리보기 테이블에 있는 모든 날짜 행을 가져옵니다.
+  const rows = $$("#result .table tbody tr[data-date]");
+  const ROWS_PER_PAGE = 50; // 페이지당 행 개수 (조정 가능)
+
+  // 3. 50번째 행마다 페이지 나누기 클래스를 추가합니다.
+  rows.forEach((row, index) => {
+    // index는 0부터 시작하므로 +1, 마지막 행에는 추가하지 않음
+    if ((index + 1) % ROWS_PER_PAGE === 0 && index < rows.length - 1) {
+      row.classList.add("page-break-after");
+    }
+  });
+
+  // 4. 인쇄 대화상자를 엽니다.
+  window.print();
 }
