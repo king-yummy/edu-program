@@ -208,11 +208,12 @@
                   <option value="grade">학년별</option>
                   <option value="class">반별</option>
                 </select>
-                <input
-                  id="eventScopeValue"
-                  placeholder="값 (예: A중학교, 3, C-101)"
-                  style="flex: 3"
-                />
+                <div
+                  id="scopedValueContainer"
+                  style="flex: 3; display: flex; gap: 8px"
+                >
+                  <input id="eventScopeValue" placeholder="값을 선택하세요" />
+                </div>
                 <input type="date" id="eventDateScoped" style="flex: 2" />
                 <input
                   id="eventTitleScoped"
@@ -224,6 +225,42 @@
                 </button>
               </div>
             </div>
+          </div>
+
+          <div
+            class="month-nav"
+            style="
+              display: flex;
+              align-items: center;
+              gap: 12px;
+              margin-top: 20px;
+              border-top: 1px solid #e5e7eb;
+              padding-top: 16px;
+            "
+          >
+            <button
+              id="btnPrevMonth"
+              class="btn"
+              style="width: auto; padding: 8px 12px"
+            >
+              ◀
+            </button>
+            <div
+              id="currentMonthDisplay"
+              style="
+                font-weight: bold;
+                text-align: center;
+                flex-grow: 1;
+                font-size: 18px;
+              "
+            ></div>
+            <button
+              id="btnNextMonth"
+              class="btn"
+              style="width: auto; padding: 8px 12px"
+            >
+              ▶
+            </button>
           </div>
           <div id="eventList" class="list mt" style="max-height: 150px"></div>
         </div>

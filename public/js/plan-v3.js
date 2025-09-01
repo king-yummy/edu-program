@@ -37,6 +37,7 @@ const state = {
   selectionEnd: null,
   isInsertionMode: false,
   insertionSegmentId: null,
+  currentEventMonth: new Date(),
 };
 
 const triggerPreview = debounce(async () => {
@@ -139,6 +140,7 @@ async function boot() {
     renderEvents();
     attachEventListeners();
     attachModalEventListeners();
+    renderScopedEventInputs();
   } catch (e) {
     console.error("초기화 실패:", e);
     alert(`페이지를 불러오는 데 실패했습니다: ${e.message}`);
@@ -158,20 +160,44 @@ function attachEventListeners() {
   $("#startDate").onchange = updatePlanSegmentDetails;
   $("#endDate").onchange = updatePlanSegmentDetails;
   $("#customDays").oninput = updatePlanSegmentDetails;
+
+  // ▼▼▼ [추가] 아래 코드를 붙여넣으세요. ▼▼▼
+  $("#btnPrevMonth").onclick = () => {
+    state.currentEventMonth.setMonth(state.currentEventMonth.getMonth() - 1);
+    renderEvents();
+  };
+  $("#btnNextMonth").onclick = () => {
+    state.currentEventMonth.setMonth(state.currentEventMonth.getMonth() + 1);
+    renderEvents();
+  };
+  $("#eventScope").onchange = renderScopedEventInputs;
+  // ▲▲▲ [추가] 여기까지 ▲▲▲
 }
 
 function renderEvents() {
+  // 1. 현재 월 표시 업데이트
+  const year = state.currentEventMonth.getFullYear();
+  const month = state.currentEventMonth.getMonth() + 1;
+  $("#currentMonthDisplay").textContent = `${year}년 ${month}월`;
+
+  // 2. 현재 월에 해당하는 이벤트만 필터링
+  const monthString = month < 10 ? `0${month}` : `${month}`;
+  const filteredEvents = state.allEvents.filter((event) =>
+    event.date.startsWith(`${year}-${monthString}`)
+  );
+
+  // 3. 필터링된 이벤트 목록 렌더링
   const listEl = $("#eventList");
-  if (!state.allEvents.length) {
-    listEl.innerHTML = `<div class="muted">등록된 이벤트가 없습니다.</div>`;
+  if (!filteredEvents.length) {
+    listEl.innerHTML = `<div class="muted">해당 월에 등록된 이벤트가 없습니다.</div>`;
     return;
   }
   const scopeMap = { all: "전체", school: "학교", grade: "학년", class: "반" };
-  listEl.innerHTML = state.allEvents
+  listEl.innerHTML = filteredEvents
     .sort((a, b) => a.date.localeCompare(b.date))
     .map(
       (event) => `
-        <div class="list-item">
+        <div class="list-item" style="display:flex; justify-content:space-between; align-items:center;">
             <span>[${scopeMap[event.scope] || "기타"}${
         event.scopeValue ? `:${event.scopeValue}` : ""
       }] ${event.date}: ${event.title}</span>
@@ -189,7 +215,14 @@ async function addEvent(type) {
   const date = $(isAll ? "#eventDateAll" : "#eventDateScoped").value;
   const title = $(isAll ? "#eventTitleAll" : "#eventTitleScoped").value.trim();
   const scope = isAll ? "all" : $("#eventScope").value;
-  const scopeValue = isAll ? "" : $("#eventScopeValue").value.trim();
+
+  const scopeValue = isAll
+    ? ""
+    : (
+        $("#scopedValueContainer select, #scopedValueContainer input")[0]
+          ?.value || ""
+      ).trim();
+
   if (!date || !title) return alert("날짜와 내용을 입력하세요.");
   if (!isAll && !scopeValue)
     return alert("부분 설정 값을 입력하세요 (예: A중학교).");
@@ -1145,3 +1178,47 @@ function renderPrintable(items, ctx) {
   ).innerHTML = `${studentHeader}${instructionText}${materialsHeaderHtml}<table class="table">${thead}<tbody>${rows}</tbody></table>`;
   updateSelectionUI();
 }
+
+// ▼▼▼ [추가] 이 함수 전체를 복사해서 붙여넣으세요. ▼▼▼
+function renderScopedEventInputs() {
+  const scope = $("#eventScope").value;
+  const container = $("#scopedValueContainer");
+  container.innerHTML = ""; // 컨테이너 비우기
+
+  let options = [];
+  let selectEl = document.createElement("select");
+  selectEl.style.width = "100%";
+
+  switch (scope) {
+    case "school":
+      options = [
+        ...new Set(state.allStudents.map((s) => s.school).filter(Boolean)),
+      ];
+      selectEl.innerHTML =
+        `<option value="">학교 선택</option>` +
+        options.map((o) => `<option value="${o}">${o}</option>`).join("");
+      container.appendChild(selectEl);
+      break;
+    case "grade":
+      options = [
+        ...new Set(
+          state.allStudents.map((s) => String(s.grade)).filter(Boolean)
+        ),
+      ].sort();
+      selectEl.innerHTML =
+        `<option value="">학년 선택</option>` +
+        options.map((o) => `<option value="${o}">${o}학년</option>`).join("");
+      container.appendChild(selectEl);
+      break;
+    case "class":
+      options = state.allClasses;
+      selectEl.innerHTML =
+        `<option value="">반 선택</option>` +
+        options
+          .map((o) => `<option value="${o.id}">${o.name}</option>`)
+          .join("");
+      container.appendChild(selectEl);
+      break;
+  }
+}
+// ▲▲▲ [추가] 여기까지 ▲▲▲
