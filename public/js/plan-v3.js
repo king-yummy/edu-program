@@ -595,7 +595,6 @@ async function deletePlan(planId) {
 }
 
 function renderPrintable(items, ctx) {
-  // 이전 버전과 거의 동일. tests 관련 코드만 없음.
   const dates = [...new Set(items.map((i) => i.date))].sort();
   const studentHeader = `<div style="margin-bottom:12px;"><b>${ctx.studentNames.join(
     ", "
@@ -647,10 +646,12 @@ function renderPrintable(items, ctx) {
       const dayName = DOW_KR[dateObj.getUTCDay()];
       const dateString = `<b>${d.slice(2).replace(/-/g, ".")} (${dayName})</b>`;
 
+      // [수정] 이 tag 변수가 아래 HTML에 적용되어야 합니다.
       const tag = `onclick="openSkipModal('${d}')" style="cursor:pointer; text-decoration:underline;"`;
 
       if (skip) {
-        return `<tr><td>${dateString}</td><td colspan="12" style="color:#64748b;background:#f8fafc;">${skip.reason}</td></tr>`;
+        // [수정] <td>에 tag 변수 추가
+        return `<tr><td ${tag}>${dateString}</td><td colspan="12" style="color:#64748b;background:#f8fafc;">${skip.reason}</td></tr>`;
       }
 
       const m1 = dayItems.find(
@@ -677,9 +678,10 @@ function renderPrintable(items, ctx) {
         }</td><td>${mainItem.key_sents || ""}</td>`;
       };
 
-      return `<tr><td>${dateString}</td>${renderMainLane(m1)}${renderMainLane(
-        m2
-      )}<td>${v?.lecture_range || ""}</td><td>${
+      // [수정] <td>에 tag 변수 추가
+      return `<tr><td ${tag}>${dateString}</td>${renderMainLane(
+        m1
+      )}${renderMainLane(m2)}<td>${v?.lecture_range || ""}</td><td>${
         v?.vocab_range || ""
       }</td></tr>`;
     })
