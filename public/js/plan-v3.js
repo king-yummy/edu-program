@@ -3,6 +3,7 @@
 const $ = (q) => document.querySelector(q);
 const $$ = (q) => document.querySelectorAll(q);
 
+// (api, debounce 헬퍼 함수는 이전과 동일)
 const api = async (path, opt) => {
   const res = await fetch(path, opt);
   if (!res.ok) {
@@ -14,7 +15,6 @@ const api = async (path, opt) => {
   if (res.status === 204) return { ok: true };
   return res.json();
 };
-
 const debounce = (func, delay) => {
   let timeout;
   return (...args) => {
@@ -39,7 +39,48 @@ const state = {
 };
 
 const triggerPreview = debounce(async () => {
-  // ... (이전과 동일)
+  if (!state.selectedStudent) return;
+  const allItems = [];
+  if (state.planSegments.length === 0) {
+    $("#result").innerHTML = "플랜 구간이 없습니다. 새 플랜을 만들어주세요.";
+    return;
+  }
+  for (const segment of state.planSegments) {
+    if (!segment.startDate || !segment.endDate) continue;
+    const defaultSchedule =
+      state.allClasses.find((c) => c.id === state.selectedStudent.class_id)
+        ?.schedule_days || "MON,WED,FRI";
+    const body = {
+      startDate: segment.startDate,
+      endDate: segment.endDate,
+      days: (segment.days || defaultSchedule).toUpperCase(),
+      lanes: segment.lanes,
+      userSkips: Object.entries(state.userSkips).map(([date, v]) => ({
+        date,
+        ...v,
+      })),
+      events: state.allEvents,
+      studentInfo: state.selectedStudent,
+    };
+    try {
+      const res = await api("/api/plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) allItems.push(...res.items);
+    } catch (e) {
+      console.error("Preview failed for segment", segment.id, e);
+    }
+  }
+  renderPrintable(
+    allItems.sort((a, b) => a.date.localeCompare(b.date)),
+    {
+      studentNames: [state.selectedStudent.name],
+      startDate: state.planSegments[0].startDate,
+      endDate: state.planSegments[state.planSegments.length - 1].endDate,
+    }
+  );
 }, 500);
 
 document.addEventListener("DOMContentLoaded", boot);
@@ -105,6 +146,7 @@ function renderEvents() {
     )
     .join("");
 }
+
 async function addEvent(type) {
   const isAll = type === "all";
   const date = $(isAll ? "#eventDateAll" : "#eventDateScoped").value;
@@ -130,6 +172,7 @@ async function addEvent(type) {
     alert(`이벤트 추가 실패: ${e.message}`);
   }
 }
+
 async function deleteEvent(eventId) {
   if (!confirm("정말 이 이벤트를 삭제하시겠습니까?")) return;
   try {
@@ -159,6 +202,7 @@ function renderStudentList(searchTerm = "") {
     radio.onchange = onStudentSelect;
   });
 }
+
 async function onStudentSelect(e) {
   const studentId = e.target.value;
   state.selectedStudent = state.allStudents.find((s) => s.id === studentId);
@@ -178,6 +222,7 @@ async function onStudentSelect(e) {
     renderExistingPlans();
   }
 }
+
 function renderExistingPlans() {
   const listEl = $("#existingPlans");
   if (!state.studentPlans.length) {
@@ -228,16 +273,15 @@ function clearPlanEditor() {
     },
   ];
   state.userSkips = {};
-  renderAllLanes(); // 이 함수를 호출하기 위해 아래에 정의가 필요
+  renderAllLanes();
   $("#result").innerHTML = "교재를 추가하고 기간을 설정하세요.";
 }
 
-// --- [신규] renderAllLanes 및 renderLane 함수 정의 ---
 function renderAllLanes() {
   $("#laneMain1").innerHTML = "<h5>메인 1</h5>";
   $("#laneMain2").innerHTML = "<h5>메인 2</h5>";
   $("#laneVocab").innerHTML = "<h5>어휘</h5>";
-
+  if (!state.planSegments) return;
   state.planSegments.forEach((segment) => {
     for (const lane in segment.lanes) {
       renderLane(lane, segment);
@@ -248,14 +292,16 @@ function renderAllLanes() {
 function renderLane(lane, segment) {
   const box = $(`#lane${lane.charAt(0).toUpperCase() + lane.slice(1)}`);
   const arr = segment.lanes[lane];
-  if (!arr.length) return;
+  if (!arr || !arr.length) return;
 
   const segmentHeader = `<div class="muted small" style="padding: 4px; background: #f8fafc;">${segment.startDate} ~ ${segment.endDate}</div>`;
   box.innerHTML +=
     segmentHeader +
     arr
       .map((b) => {
-        const startOptions = b.units
+        // --- [수정] b.units가 없을 경우를 대비해 빈 배열로 처리 ---
+        const units = b.units || [];
+        const startOptions = units
           .map(
             (u) =>
               `<option value="${u.unit_code}" ${
@@ -265,7 +311,7 @@ function renderLane(lane, segment) {
               }</option>`
           )
           .join("");
-        const endOptions = b.units
+        const endOptions = units
           .map(
             (u) =>
               `<option value="${u.unit_code}" ${
@@ -290,7 +336,6 @@ function renderLane(lane, segment) {
 }
 
 function renderMaterialOptions() {
-  // (이전과 동일)
   const selCat = $("#selMaterialCategory"),
     selSubCat = $("#selMaterialSubCategory"),
     selMat = $("#selMaterial");
@@ -380,7 +425,9 @@ function updateSelectionUI() {
   $$("#result tr[data-date]").forEach((row) => {
     const date = row.dataset.date;
     row.style.backgroundColor =
-      date >= state.selectionStart && date <= state.selectionEnd
+      state.selectionStart &&
+      date >= state.selectionStart &&
+      date <= state.selectionEnd
         ? "#e0f2fe"
         : "";
   });
@@ -406,6 +453,7 @@ async function addBookToLane() {
 async function savePlan() {
   alert("저장 기능은 데모 버전입니다.");
 }
+
 async function deletePlan(planId) {
   if (!confirm("정말 이 플랜을 삭제하시겠습니까?")) return;
   try {
@@ -423,7 +471,6 @@ async function deletePlan(planId) {
 window.deletePlan = deletePlan;
 
 function renderPrintable(items, ctx) {
-  // (이전과 동일)
   const dates = [...new Set(items.map((i) => i.date))].sort();
   const studentHeader = `<div style="margin-bottom:12px;"><b>${ctx.studentNames.join(
     ", "
@@ -500,15 +547,22 @@ function renderPrintable(items, ctx) {
   ).innerHTML = `${studentHeader}${materialsHeaderHtml}<table class="table">${thead}<tbody>${rows}</tbody></table>`;
   updateSelectionUI();
 }
+
+// --- [수정] loadPlanForEditing 함수 최종본 ---
 async function loadPlanForEditing(planId) {
   const plan = state.studentPlans.find((p) => p.planId === planId);
   if (!plan) return alert("플랜 정보를 찾을 수 없습니다.");
+
   clearPlanEditor();
   state.editingPlanId = planId;
-  if (plan.planSegments) {
-    state.planSegments = plan.planSegments;
-  } else {
-    state.planSegments = [
+
+  let segmentsToLoad = [];
+  // 옛날/새로운 데이터 형식 모두 호환
+  if (plan.planSegments && plan.planSegments.length > 0) {
+    segmentsToLoad = plan.planSegments;
+  } else if (plan.context) {
+    // 옛날 데이터 형식 변환
+    segmentsToLoad = [
       {
         id: `seg_${Date.now()}`,
         startDate: plan.context.startDate,
@@ -518,14 +572,38 @@ async function loadPlanForEditing(planId) {
       },
     ];
   }
-  state.userSkips =
-    plan.userSkips ||
-    (plan.context
-      ? plan.context.userSkips.reduce((acc, skip) => {
-          acc[skip.date] = { type: skip.type, reason: skip.reason };
-          return acc;
-        }, {})
-      : {});
+
+  // 각 교재의 상세 'units' 정보를 다시 불러와 채워넣습니다.
+  for (const segment of segmentsToLoad) {
+    for (const lane in segment.lanes) {
+      for (const book of segment.lanes[lane]) {
+        const isVocab = lane === "vocab";
+        const units = await api(
+          isVocab
+            ? `/api/vocaBook?materialId=${book.materialId}`
+            : `/api/mainBook?materialId=${book.materialId}`
+        );
+        book.units = units; // 'units' 정보 주입
+        // title 정보도 다시 채워넣기
+        const materialInfo = state.allMaterials.find(
+          (m) => m.material_id === book.materialId
+        );
+        if (materialInfo) book.title = materialInfo.title;
+      }
+    }
+  }
+  state.planSegments = segmentsToLoad;
+
+  // userSkips 데이터 형식 변환 및 로드
+  if (plan.context && Array.isArray(plan.context.userSkips)) {
+    state.userSkips = plan.context.userSkips.reduce((acc, skip) => {
+      acc[skip.date] = { type: skip.type, reason: skip.reason };
+      return acc;
+    }, {});
+  } else {
+    state.userSkips = plan.userSkips || {};
+  }
+
   renderAllLanes();
   $("#planActions").style.display = "none";
   $("#planEditor").style.display = "block";
