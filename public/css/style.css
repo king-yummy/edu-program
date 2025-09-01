@@ -170,3 +170,27 @@ button {
   padding: 4px 10px;
   font-size: 12px;
 }
+
+/* 헤더 스타일: 배경색, 굵은 글씨, 중앙 정렬 */
+.table thead th {
+  background-color: #fefce8; /* 눈이 편안한 노란색 계열 */
+  font-weight: bold;
+  text-align: center;
+  border-bottom: 2px solid #e2e8f0;
+}
+
+/* 주요 항목(날짜, 메인1, 메인2)을 구분하는 굵은 세로선 */
+.section-divider {
+  border-right: 2px solid #94a3b8 !important; /* !important로 다른 스타일에 덮어씌워지지 않게 함 */
+}
+
+/* 교재가 변경될 때 표시되는 굵은 가로선 */
+.book-change-divider td {
+  border-top: 2px solid #94a3b8 !important;
+}
+
+/* 날짜 열 글씨 굵게 및 중앙 정렬 */
+.date-column {
+  font-weight: bold;
+  text-align: center;
+}

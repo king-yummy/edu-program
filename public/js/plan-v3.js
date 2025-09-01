@@ -1035,13 +1035,11 @@ function renderPrintable(items, ctx) {
   const studentHeader = `<div style="margin-bottom:12px;"><b>${ctx.studentNames.join(
     ", "
   )}</b> / ${ctx.startDate} ~ ${ctx.endDate}</div>`;
-
   const instructionText = `
     <div class="muted small" style="margin-bottom: 12px; padding: 8px; background: #f8fafc; border-radius: 8px;">
       <b>💡 사용법:</b> 날짜를 그냥 클릭하면 <b>결석 처리</b>, <code>Ctrl</code> 또는 <code>Cmd</code>를 누른 채로 클릭하면 <b>기간 선택(교재 삽입용)</b>이 됩니다.
     </div>
   `;
-
   const usedMainMaterialIds = [
     ...new Set(
       items
@@ -1062,24 +1060,28 @@ function renderPrintable(items, ctx) {
         }</div></div>`
     )
     .join("")}</div>`;
+
   const thead = `
-      <thead style="font-size: 12px; text-align: center;">
-        <tr><th rowspan="3" style="width:100px; vertical-align: middle;">날짜</th><th colspan="5">메인 1</th> <th colspan="5">메인 2</th> <th colspan="2">단어 DT</th></tr>
-        <tr><th colspan="3">수업 진도</th> <th colspan="2">티칭 챌린지</th><th colspan="3">수업 진도</th> <th colspan="2">티칭 챌린지</th><th rowspan="2" style="vertical-align: middle;">회차</th> <th rowspan="2" style="vertical-align: middle;">DT</th></tr>
-        <tr><th>인강</th><th>교재 page</th><th>WB</th><th>개념+단어</th><th>문장학습</th><th>인강</th><th>교재 page</th><th>WB</th><th>개념+단어</th><th>문장학습</th></tr>
+      <thead style="font-size: 12px;">
+        <tr><th rowspan="3" class="section-divider" style="width:100px; vertical-align: middle;">날짜</th><th colspan="5">메인 1</th> <th colspan="5" class="section-divider">메인 2</th> <th colspan="2">단어 DT</th></tr>
+        <tr><th colspan="3">수업 진도</th> <th colspan="2">티칭 챌린지</th><th colspan="3">수업 진도</th> <th colspan="2" class="section-divider">티칭 챌린지</th><th rowspan="2" style="vertical-align: middle;">회차</th> <th rowspan="2" style="vertical-align: middle;">DT</th></tr>
+        <tr><th>인강</th><th>교재 page</th><th>WB</th><th>개념+단어</th><th>문장학습</th><th>인강</th><th>교재 page</th><th>WB</th><th>개념+단어</th><th class="section-divider">문장학습</th></tr>
       </thead>`;
+
+  let prevM1Id = null;
+  let prevM2Id = null;
+
   const rows = dates
     .map((d) => {
       const dayItems = items.filter((x) => x.date === d);
       const skip = dayItems.find((x) => x.source === "skip");
+
       const DOW_KR = ["일", "월", "화", "수", "목", "금", "토"];
       const dateObj = new Date(d + "T00:00:00Z");
       const dayName = DOW_KR[dateObj.getUTCDay()];
-      const dateString = `<b>${d.slice(2).replace(/-/g, ".")} (${dayName})</b>`;
+      const dateString = `${d.slice(2).replace(/-/g, ".")} (${dayName})`;
       const tag = `data-date="${d}" onclick="handleDateClick(event, '${d}')" style="cursor:pointer;"`;
-      if (skip) {
-        return `<tr ${tag}><td>${dateString}</td><td colspan="12" style="color:#64748b;background:#f8fafc;">${skip.reason}</td></tr>`;
-      }
+
       const m1 = dayItems.find(
         (x) => x.source === "main" && x.lane === "main1"
       );
@@ -1087,30 +1089,59 @@ function renderPrintable(items, ctx) {
         (x) => x.source === "main" && x.lane === "main2"
       );
       const v = dayItems.find((x) => x.source === "vocab");
+
+      let rowClass = "";
+      const m1Id = m1?.material_id || null;
+      const m2Id = m2?.material_id || null;
+
+      // 이전 날짜와 교재 ID를 비교하여 교재가 바뀌었는지 확인합니다.
+      if ((prevM1Id && m1Id !== prevM1Id) || (prevM2Id && m2Id !== prevM2Id)) {
+        // 단, null -> 교재 로 바뀌는 경우는 첫 시작이므로 제외합니다.
+        if (prevM1Id || prevM2Id) {
+          rowClass = "book-change-divider";
+        }
+      }
+      prevM1Id = m1Id;
+      prevM2Id = m2Id;
+
+      if (skip) {
+        return `<tr class="${rowClass}" ${tag}><td class="date-column section-divider">${dateString}</td><td colspan="12" style="color:#64748b;background:#f8fafc;">${skip.reason}</td></tr>`;
+      }
+
       const renderMainLane = (mainItem) => {
         if (!mainItem) return `<td></td>`.repeat(5);
         const title =
           state.allMaterials.find((m) => m.material_id === mainItem.material_id)
             ?.title || mainItem.material_id;
         if (mainItem.isOT)
-          return `<td colspan="5" style="background: #F9FF00;">"${title}" OT</td>`;
+          return `<td colspan="5" style="background: #F9FF00; font-weight: bold;">"${title}" OT</td>`;
         if (mainItem.isReturn)
-          return `<td colspan="5" style="background: #e0f2fe;">"${title}" 복귀</td>`;
+          return `<td colspan="5" style="background: #e0f2fe; font-weight: bold;">"${title}" 복귀</td>`;
         return `<td>${mainItem.lecture_range || ""}</td><td>${
           mainItem.pages ? `p.${mainItem.pages}` : ""
         }</td><td>${mainItem.wb ? `p.${mainItem.wb}` : ""}</td><td>${
           mainItem.dt_vocab || ""
         }</td><td>${mainItem.key_sents || ""}</td>`;
       };
-      return `<tr ${tag}><td>${dateString}</td>${renderMainLane(
-        m1
-      )}${renderMainLane(m2)}<td>${v?.lecture_range || ""}</td><td>${
-        v?.vocab_range || ""
-      }</td></tr>`;
+
+      return `<tr class="${rowClass}" ${tag}>
+                <td class="date-column section-divider">${dateString}</td>
+                ${renderMainLane(m1).replace(
+                  /<\/td>$/,
+                  '<td class="section-divider">'
+                )}
+                ${renderMainLane(m2).replace(
+                  /<\/td>$/,
+                  '<td class="section-divider">'
+                )}
+                <td>${v?.lecture_range || ""}</td>
+                <td>${v?.vocab_range || ""}</td>
+              </tr>`;
     })
     .join("");
+
   $(
     "#result"
-  ).innerHTML = `${studentHeader}${instructionText}${materialsHeaderHtml}<table class="table">${thead}<tbody>${rows}</tbody></table>`; // <-- ${instructionText} 추가
+  ).innerHTML = `${studentHeader}${instructionText}${materialsHeaderHtml}<table class="table">${thead}<tbody>${rows}</tbody></table>`;
   updateSelectionUI();
 }
