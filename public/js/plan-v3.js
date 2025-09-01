@@ -1,4 +1,4 @@
-// /public/js/plan-v3.js — 최종 완성본
+// /public/js/plan-v3.js — 최종 수정본
 
 const $ = (q) => document.querySelector(q);
 const $$ = (q) => document.querySelectorAll(q);
@@ -36,6 +36,7 @@ const state = {
   selectionStart: null,
   selectionEnd: null,
   isInsertionMode: false,
+  insertionSegmentId: null, // ★ 수정됨: 삽입 중인 구간 ID를 기억
 };
 
 const triggerPreview = debounce(async () => {
@@ -128,9 +129,10 @@ function attachEventListeners() {
   $("#btnAddBook").onclick = addBookToLane;
   $("#btnSave").onclick = savePlan;
   $("#btnPrint").onclick = () => window.print();
-  $("#btnInsertMode").onclick = enterInsertionMode;
+  $("#btnInsertMode").onclick = toggleInsertionMode; // ★ 수정됨
 }
 
+// --- 이벤트 관리 (변경 없음) ---
 function renderEvents() {
   const listEl = $("#eventList");
   if (!state.allEvents.length) {
@@ -192,6 +194,7 @@ async function deleteEvent(eventId) {
 }
 window.deleteEvent = deleteEvent;
 
+// --- 학생 및 플랜 목록 관리 (변경 없음) ---
 function renderStudentList(searchTerm = "") {
   const filtered = searchTerm
     ? state.allStudents.filter((s) =>
@@ -257,6 +260,7 @@ function renderExistingPlans() {
     .join("");
 }
 
+// --- 플랜 편집기 UI (변경 없음) ---
 function showPlanEditorForNewPlan() {
   state.editingPlanId = null;
   clearPlanEditor();
@@ -444,8 +448,11 @@ function renderMaterialOptions() {
   }
 }
 
+// --- ★★★ 여기가 핵심 수정 부분 ★★★ ---
+
 let lastSelectedDate = null;
 window.handleDateClick = (event, date) => {
+  if (state.isInsertionMode) return; // 삽입 모드 중에는 날짜 재선택 방지
   if (event.shiftKey && lastSelectedDate) {
     state.selectionStart = lastSelectedDate < date ? lastSelectedDate : date;
     state.selectionEnd = lastSelectedDate < date ? date : lastSelectedDate;
@@ -464,7 +471,7 @@ function updateSelectionUI() {
         ? "#e0f2fe"
         : "";
   });
-  if (state.selectionStart) {
+  if (state.selectionStart && !state.isInsertionMode) {
     const start = new Date(state.selectionStart),
       end = new Date(state.selectionEnd);
     const diffDays =
@@ -473,29 +480,135 @@ function updateSelectionUI() {
     $(
       "#btnInsertMode"
     ).textContent = `📝 선택한 ${diffDays}일 기간에 새 교재 삽입하기`;
-  } else {
+  } else if (!state.isInsertionMode) {
     $("#insertionControls").style.display = "none";
   }
 }
-function enterInsertionMode() {
-  if (!state.selectionStart) {
-    return alert("먼저 미리보기에서 기간을 선택해주세요.");
+
+// ★ 신규: 삽입 모드 진입/종료를 관리하는 함수
+async function toggleInsertionMode() {
+  if (state.isInsertionMode) {
+    // --- 삽입 모드 종료 ---
+    alert("교재 삽입을 완료했습니다.");
+    exitInsertionMode();
+  } else {
+    // --- 삽입 모드 진입 ---
+    if (!state.selectionStart) {
+      return alert("먼저 미리보기에서 기간을 선택해주세요.");
+    }
+
+    const { start, end, targetSegment } = findTargetSegmentForInsertion();
+    if (!targetSegment) {
+      alert("교재를 삽입할 플랜 구간을 찾을 수 없습니다.");
+      return;
+    }
+
+    try {
+      // 1. 계획표를 '이전' - '삽입' - '이후' 3조각으로 딱 한 번만 자른다.
+      const itemsBefore = await getPlanItems(
+        targetSegment.startDate,
+        getPreviousDay(start),
+        targetSegment
+      );
+      const lanesAfter = JSON.parse(JSON.stringify(targetSegment.lanes));
+      const lastItemByLane = { main1: null, main2: null, vocab: null };
+      itemsBefore
+        .filter((item) => item.source !== "skip" && item.lane)
+        .forEach((item) => {
+          lastItemByLane[item.lane] = item;
+        });
+      for (const lane in lastItemByLane) {
+        const lastItem = lastItemByLane[lane];
+        if (lastItem) {
+          const laneDataAfter = lanesAfter[lane];
+          const bookIndex = laneDataAfter.findIndex(
+            (b) => b.materialId === lastItem.material_id
+          );
+          if (bookIndex > -1) {
+            const book = laneDataAfter[bookIndex];
+            const lastUnitIndex = book.units.findIndex(
+              (u) => u.unit_code === lastItem.unit_code
+            );
+            if (lastUnitIndex > -1 && lastUnitIndex + 1 < book.units.length) {
+              book.startUnitCode = book.units[lastUnitIndex + 1].unit_code;
+            } else {
+              laneDataAfter.splice(bookIndex, 1);
+            }
+          }
+        }
+      }
+
+      const beforeSegment = {
+        ...targetSegment,
+        id: `seg_${Date.now()}_before`,
+        endDate: getPreviousDay(start),
+      };
+      const insertionSegment = {
+        id: `seg_${Date.now()}_insertion`,
+        startDate: start,
+        endDate: end,
+        days: targetSegment.days,
+        lanes: { main1: [], main2: [], vocab: [] }, // 완전히 빈 삽입 구간
+      };
+      const afterSegment = {
+        ...targetSegment,
+        id: `seg_${Date.now()}_after`,
+        startDate: getNextDay(end),
+        lanes: lanesAfter,
+      };
+
+      const originalIndex = state.planSegments.findIndex(
+        (s) => s.id === targetSegment.id
+      );
+      const segmentsToInsert = [
+        beforeSegment,
+        insertionSegment,
+        afterSegment,
+      ].filter((s) => s.startDate <= s.endDate);
+      state.planSegments.splice(originalIndex, 1, ...segmentsToInsert);
+
+      // 2. 상태를 '삽입 모드'로 바꾸고, 새로 생긴 '삽입 구간'의 ID를 기억해둔다.
+      state.isInsertionMode = true;
+      state.insertionSegmentId = insertionSegment.id;
+
+      // 3. UI를 '삽입 모드'용으로 바꾼다.
+      $("#btnInsertMode").textContent = "✅ 교재 삽입 완료하기";
+      $("#btnAddBook").textContent = "선택 기간에 삽입";
+      $("#planEditor").scrollIntoView({ behavior: "smooth" });
+
+      renderAllLanes();
+      document.dispatchEvent(new Event("renderLanesComplete"));
+      triggerPreview();
+    } catch (e) {
+      alert(`기간 삽입 준비 실패: ${e.message}`);
+    }
   }
-  state.isInsertionMode = true;
-  alert(
-    `[${state.selectionStart} ~ ${state.selectionEnd}]\n이 기간에 삽입할 교재를 왼쪽에서 선택하고 '선택 기간에 삽입' 버튼을 누르세요.`
-  );
-  $("#btnAddBook").textContent = "선택 기간에 삽입";
-  $("#planEditor").scrollIntoView({ behavior: "smooth" });
 }
+
+// ★ 신규: 삽입 모드를 깔끔하게 종료하는 함수
+function exitInsertionMode() {
+  state.isInsertionMode = false;
+  state.insertionSegmentId = null;
+  state.selectionStart = null;
+  state.selectionEnd = null;
+  lastSelectedDate = null;
+
+  $("#btnAddBook").textContent = "레인에 추가";
+  updateSelectionUI(); // 버튼과 선택 영역을 모두 초기화
+}
+
+// ★ 수정됨: addBookToLane 로직 단순화
 async function addBookToLane() {
   if (state.isInsertionMode) {
-    await insertBookIntoSelection();
-    state.isInsertionMode = false;
-    $("#btnAddBook").textContent = "레인에 추가";
-    state.selectionStart = state.selectionEnd = lastSelectedDate = null;
-    updateSelectionUI();
+    // 삽입 모드에서는, 기억해둔 '삽입 구간'에 책만 추가한다.
+    if (state.insertionSegmentId) {
+      await addBookToSegment(state.insertionSegmentId);
+    } else {
+      alert("오류: 삽입할 구간이 지정되지 않았습니다. 모드를 재시작해주세요.");
+      exitInsertionMode();
+    }
   } else {
+    // 일반 모드에서는, 가장 첫 번째 구간에 책을 추가한다.
     const segment =
       state.planSegments.length > 0 ? state.planSegments[0] : null;
     if (segment) {
@@ -505,6 +618,9 @@ async function addBookToLane() {
     }
   }
 }
+
+// --- 나머지 헬퍼 함수들 (변경 없음) ---
+
 async function addBookToSegment(segmentId) {
   const segment = state.planSegments.find((s) => s.id === segmentId);
   const materialId = $("#selMaterial").value;
@@ -536,102 +652,6 @@ async function addBookToSegment(segmentId) {
   } catch (e) {
     alert(`교재 추가 실패: ${e.message}`);
   }
-}
-
-async function insertBookIntoSelection() {
-  const { start, end, targetSegment } = findTargetSegmentForInsertion();
-  if (!targetSegment) {
-    alert("교재를 삽입할 플랜 구간을 찾을 수 없습니다.");
-    return;
-  }
-
-  // 1. [이전 구간] 생성: 원래 계획에서 삽입 시작일 전날까지의 구간
-  const beforeSegment = {
-    ...targetSegment,
-    id: `seg_${Date.now()}_before`,
-    endDate: getPreviousDay(start),
-  };
-
-  // 2. [삽입 구간] 생성: 내신 기간처럼 완전히 새로운 계획을 넣을 빈 구간
-  //    모든 레인이 비어있는 상태로 생성됩니다.
-  const insertionSegment = {
-    id: `seg_${Date.now()}_insertion`,
-    startDate: start,
-    endDate: end,
-    days: targetSegment.days, // 요일 설정은 기존 구간을 따라감
-    lanes: { main1: [], main2: [], vocab: [] }, // ★ 여기가 핵심! 완전히 비웁니다.
-  };
-
-  // 3. [이후 구간] 생성: 삽입으로 인해 뒤로 밀려난 나머지 원래 계획
-  //    삽입 기간 직전까지의 진도를 계산해서, 그 다음 진도부터 시작하도록 설정합니다.
-  const itemsBefore = await getPlanItems(
-    targetSegment.startDate,
-    getPreviousDay(start),
-    targetSegment
-  );
-
-  const lanesAfter = JSON.parse(JSON.stringify(targetSegment.lanes));
-  const lastItemByLane = { main1: null, main2: null, vocab: null };
-  itemsBefore
-    .filter((item) => item.source !== "skip" && item.lane)
-    .forEach((item) => {
-      lastItemByLane[item.lane] = item;
-    });
-
-  for (const lane in lastItemByLane) {
-    const lastItem = lastItemByLane[lane];
-    if (lastItem) {
-      const laneDataAfter = lanesAfter[lane];
-      const bookIndex = laneDataAfter.findIndex(
-        (b) => b.materialId === lastItem.material_id
-      );
-      if (bookIndex > -1) {
-        const book = laneDataAfter[bookIndex];
-        const lastUnitIndex = book.units.findIndex(
-          (u) => u.unit_code === lastItem.unit_code
-        );
-
-        if (lastUnitIndex > -1 && lastUnitIndex + 1 < book.units.length) {
-          // 다음 차시부터 시작하도록 시작점 조정
-          book.startUnitCode = book.units[lastUnitIndex + 1].unit_code;
-        } else {
-          // 한 권이 완전히 끝났으면, 그 다음 책부터 시작하도록 조정
-          laneDataAfter.splice(bookIndex, 1);
-        }
-      }
-    }
-  }
-
-  const afterSegment = {
-    ...targetSegment,
-    id: `seg_${Date.now()}_after`,
-    startDate: getNextDay(end), // 삽입 구간이 끝난 다음 날부터 시작
-    lanes: lanesAfter, // 뒤로 밀린 진도가 담긴 레인 정보
-  };
-
-  // 4. 기존 1개의 구간을 새로 만든 3개의 구간으로 교체합니다.
-  const originalIndex = state.planSegments.findIndex(
-    (s) => s.id === targetSegment.id
-  );
-
-  // 날짜가 유효한 구간들만 필터링해서 삽입
-  const segmentsToInsert = [
-    beforeSegment,
-    insertionSegment,
-    afterSegment,
-  ].filter((s) => s.startDate <= s.endDate);
-
-  state.planSegments.splice(originalIndex, 1, ...segmentsToInsert);
-
-  // 5. 방금 만든 '삽입 구간'에 사용자가 선택한 교재를 추가합니다.
-  //    이렇게 해야 '메인1', '메인2', '단어' 책을 순서대로 추가할 수 있습니다.
-  await addBookToSegment(insertionSegment.id);
-
-  // 삽입 모드 종료 및 UI 초기화
-  state.isInsertionMode = false;
-  $("#btnAddBook").textContent = "레인에 추가";
-  state.selectionStart = state.selectionEnd = lastSelectedDate = null;
-  updateSelectionUI();
 }
 
 function findTargetSegmentForInsertion() {
