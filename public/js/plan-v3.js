@@ -177,6 +177,7 @@ async function addEvent(type) {
     alert(`이벤트 추가 실패: ${e.message}`);
   }
 }
+
 async function deleteEvent(eventId) {
   if (!confirm("정말 이 이벤트를 삭제하시겠습니까?")) return;
   try {
@@ -206,6 +207,7 @@ function renderStudentList(searchTerm = "") {
     radio.onchange = onStudentSelect;
   });
 }
+
 async function onStudentSelect(e) {
   const studentId = e.target.value;
   state.selectedStudent = state.allStudents.find((s) => s.id === studentId);
@@ -299,7 +301,6 @@ function renderLane(lane, segment) {
   const box = $(`#lane${lane.charAt(0).toUpperCase() + lane.slice(1)}`);
   const arr = segment.lanes[lane];
   if (!arr || !arr.length) return;
-
   const segmentHeader = `<div class="muted small" style="padding: 4px; background: #f8fafc;">${segment.startDate} ~ ${segment.endDate}</div>`;
   box.innerHTML +=
     segmentHeader +
@@ -346,7 +347,6 @@ function onUnitChange(e) {
   if (!segment) return;
   const book = segment.lanes[lane].find((b) => b.instanceId === id);
   if (!book) return;
-
   if (type === "start") {
     book.startUnitCode = e.target.value;
   } else {
@@ -354,6 +354,7 @@ function onUnitChange(e) {
   }
   triggerPreview();
 }
+
 window.removeFromLane = (segmentId, lane, instanceId) => {
   const segment = state.planSegments.find((s) => s.id === segmentId);
   if (segment) {
@@ -475,7 +476,6 @@ function updateSelectionUI() {
   }
 }
 
-// --- [수정] 교재 추가 및 삽입 기능 최종 구현 ---
 function enterInsertionMode() {
   if (!state.selectionStart) {
     return alert("먼저 미리보기에서 기간을 선택해주세요.");
@@ -494,7 +494,7 @@ async function addBookToLane() {
     state.isInsertionMode = false;
     $("#btnAddBook").textContent = "레인에 추가";
     state.selectionStart = state.selectionEnd = lastSelectedDate = null;
-    updateSelectionUI(); // 선택 해제 UI 반영
+    updateSelectionUI();
   } else {
     const segment =
       state.planSegments.length > 0 ? state.planSegments[0] : null;
@@ -544,7 +544,6 @@ async function insertBookIntoSelection() {
     alert("교재를 삽입할 플랜 구간을 찾을 수 없습니다.");
     return;
   }
-
   const itemsBefore = await getPlanItems(
     targetSegment.startDate,
     getPreviousDay(start),
@@ -552,11 +551,10 @@ async function insertBookIntoSelection() {
   );
   const lastItemByLane = { main1: null, main2: null, vocab: null };
   itemsBefore
-    .filter((item) => item.source !== "skip")
+    .filter((item) => item.source !== "skip" && item.lane)
     .forEach((item) => {
       lastItemByLane[item.lane] = item;
     });
-
   const lanesAfter = JSON.parse(JSON.stringify(targetSegment.lanes));
   for (const lane in lastItemByLane) {
     const lastItem = lastItemByLane[lane];
@@ -579,7 +577,6 @@ async function insertBookIntoSelection() {
       }
     }
   }
-
   const beforeSegment = { ...targetSegment, endDate: getPreviousDay(start) };
   const newSegment = {
     id: `seg_${Date.now()}_new`,
@@ -594,7 +591,6 @@ async function insertBookIntoSelection() {
     startDate: getNextDay(end),
     lanes: lanesAfter,
   };
-
   const originalIndex = state.planSegments.findIndex(
     (s) => s.id === targetSegment.id
   );
@@ -608,7 +604,6 @@ async function insertBookIntoSelection() {
   state.planSegments = state.planSegments.filter(
     (s) => s.startDate <= s.endDate
   );
-
   await addBookToSegment(newSegment.id);
 }
 
@@ -631,8 +626,12 @@ async function getPlanItems(startDate, endDate, segment) {
     endDate,
     days: (segment.days || defaultSchedule).toUpperCase(),
     lanes: segment.lanes,
-    userSkips: {},
-    events: [],
+    // --- [수정] 올바른 userSkips 형식으로 전달 ---
+    userSkips: Object.entries(state.userSkips).map(([date, v]) => ({
+      date,
+      ...v,
+    })),
+    events: state.allEvents,
     studentInfo: state.selectedStudent,
   };
   const res = await api("/api/plan", {
@@ -716,6 +715,7 @@ async function savePlan() {
     alert(`저장 실패: ${e.message}`);
   }
 }
+
 async function deletePlan(planId) {
   if (!confirm("정말 이 플랜을 삭제하시겠습니까?")) return;
   try {
@@ -738,7 +738,6 @@ async function loadPlanForEditing(planId) {
 
   clearPlanEditor();
   state.editingPlanId = planId;
-
   let segmentsToLoad = [];
   if (plan.planSegments && plan.planSegments.length > 0) {
     segmentsToLoad = JSON.parse(JSON.stringify(plan.planSegments));
@@ -753,7 +752,6 @@ async function loadPlanForEditing(planId) {
       },
     ];
   }
-
   for (const segment of segmentsToLoad) {
     for (const lane in segment.lanes) {
       for (const book of segment.lanes[lane]) {
@@ -774,7 +772,6 @@ async function loadPlanForEditing(planId) {
     }
   }
   state.planSegments = segmentsToLoad;
-
   if (plan.context && Array.isArray(plan.context.userSkips)) {
     state.userSkips = plan.context.userSkips.reduce((acc, skip) => {
       acc[skip.date] = { type: skip.type, reason: skip.reason };
@@ -783,7 +780,6 @@ async function loadPlanForEditing(planId) {
   } else {
     state.userSkips = plan.userSkips || {};
   }
-
   renderAllLanes();
   $("#planActions").style.display = "none";
   $("#planEditor").style.display = "block";
