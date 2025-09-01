@@ -1218,7 +1218,7 @@ function prepareAndPrint() {
 
   // 2. 미리보기 테이블에 있는 모든 날짜 행을 가져옵니다.
   const rows = $$("#result .table tbody tr[data-date]");
-  const ROWS_PER_PAGE = 50; // 페이지당 행 개수 (조정 가능)
+  const ROWS_PER_PAGE = 48; // 페이지당 행 개수 (조정 가능)
 
   // 3. 50번째 행마다 페이지 나누기 클래스를 추가합니다.
   rows.forEach((row, index) => {
