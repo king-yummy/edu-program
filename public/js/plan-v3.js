@@ -110,11 +110,6 @@ function updatePlanSegmentDetails() {
       segment.days = newDays;
     }
 
-    // 날짜 변경으로 인해 유효하지 않게 된 (시작일 > 종료일) 구간이 있다면 제거합니다.
-    state.planSegments = state.planSegments.filter(
-      (s) => s.startDate <= s.endDate
-    );
-
     // 변경된 내용으로 UI와 미리보기를 다시 렌더링합니다.
     renderAllLanes();
     document.dispatchEvent(new Event("renderLanesComplete"));
@@ -888,13 +883,14 @@ async function loadPlanForEditing(planId) {
   }
   state.planSegments = segmentsToLoad;
 
-   if (state.planSegments.length > 0) {
+  if (state.planSegments.length > 0) {
     $("#startDate").value = state.planSegments[0].startDate;
-    $("#endDate").value = state.planSegments[state.planSegments.length - 1].endDate;
+    $("#endDate").value =
+      state.planSegments[state.planSegments.length - 1].endDate;
     // 요일은 첫 번째 구간의 설정을 대표로 표시합니다.
     $("#customDays").value = state.planSegments[0].days || "";
   }
-  
+
   if (plan.context && Array.isArray(plan.context.userSkips)) {
     state.userSkips = plan.context.userSkips.reduce((acc, skip) => {
       acc[skip.date] = { type: skip.type, reason: skip.reason };
