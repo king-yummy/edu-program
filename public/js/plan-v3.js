@@ -36,7 +36,7 @@ const state = {
   selectionStart: null,
   selectionEnd: null,
   isInsertionMode: false,
-  insertionSegmentId: null, // ★ 수정됨: 삽입 중인 구간 ID를 기억
+  insertionSegmentId: null,
 };
 
 const triggerPreview = debounce(async () => {
@@ -116,6 +116,7 @@ function updatePlanSegmentDetails() {
     triggerPreview();
   }
 }
+
 document.addEventListener("DOMContentLoaded", boot);
 
 async function boot() {
@@ -154,14 +155,11 @@ function attachEventListeners() {
   $("#btnSave").onclick = savePlan;
   $("#btnPrint").onclick = () => window.print();
   $("#btnInsertMode").onclick = toggleInsertionMode;
-  // ▼▼▼ [추가] 아래 3줄을 추가하세요. ▼▼▼
   $("#startDate").onchange = updatePlanSegmentDetails;
   $("#endDate").onchange = updatePlanSegmentDetails;
   $("#customDays").oninput = updatePlanSegmentDetails;
-  // ▲▲▲ [추가] 여기까지 ▲▲▲
 }
 
-// --- 이벤트 관리 (변경 없음) ---
 function renderEvents() {
   const listEl = $("#eventList");
   if (!state.allEvents.length) {
@@ -185,6 +183,7 @@ function renderEvents() {
     )
     .join("");
 }
+
 async function addEvent(type) {
   const isAll = type === "all";
   const date = $(isAll ? "#eventDateAll" : "#eventDateScoped").value;
@@ -210,6 +209,7 @@ async function addEvent(type) {
     alert(`이벤트 추가 실패: ${e.message}`);
   }
 }
+
 async function deleteEvent(eventId) {
   if (!confirm("정말 이 이벤트를 삭제하시겠습니까?")) return;
   try {
@@ -223,7 +223,6 @@ async function deleteEvent(eventId) {
 }
 window.deleteEvent = deleteEvent;
 
-// --- 학생 및 플랜 목록 관리 (변경 없음) ---
 function renderStudentList(searchTerm = "") {
   const filtered = searchTerm
     ? state.allStudents.filter((s) =>
@@ -240,6 +239,7 @@ function renderStudentList(searchTerm = "") {
     radio.onchange = onStudentSelect;
   });
 }
+
 async function onStudentSelect(e) {
   const studentId = e.target.value;
   state.selectedStudent = state.allStudents.find((s) => s.id === studentId);
@@ -259,6 +259,7 @@ async function onStudentSelect(e) {
     renderExistingPlans();
   }
 }
+
 function renderExistingPlans() {
   const listEl = $("#existingPlans");
   if (!state.studentPlans.length) {
@@ -289,11 +290,9 @@ function renderExistingPlans() {
     .join("");
 }
 
-// ▼▼▼ [수정] 아래 두 함수를 통째로 바꿔주세요. ▼▼▼
 function showPlanEditorForNewPlan() {
   state.editingPlanId = null;
 
-  // 1. UI에 기본값 설정
   const today = new Date().toISOString().slice(0, 10);
   $("#startDate").value = today;
   $("#endDate").value = today;
@@ -303,7 +302,6 @@ function showPlanEditorForNewPlan() {
     : "MON,WED,FRI";
   $("#customDays").value = defaultSchedule;
 
-  // 2. UI 값으로 state 초기화 (clearPlanEditor의 핵심 기능 이전)
   state.planSegments = [
     {
       id: `seg_${Date.now()}`,
@@ -315,7 +313,6 @@ function showPlanEditorForNewPlan() {
   ];
   state.userSkips = {};
 
-  // 3. 화면 업데이트 및 에디터 표시
   renderAllLanes();
   document.dispatchEvent(new Event("renderLanesComplete"));
   $("#result").innerHTML = "교재를 추가하고 기간을 설정하세요.";
@@ -326,14 +323,10 @@ function showPlanEditorForNewPlan() {
 }
 
 function clearPlanEditor() {
-  // 이 함수의 내용은 대부분 showPlanEditorForNewPlan으로 옮겨졌습니다.
-  // 이젠 최소한의 정리만 수행하도록 단순화하거나,
-  // showPlanEditorForNewPlan 호출로 대체해도 무방합니다.
   state.planSegments = [];
   state.userSkips = {};
   renderAllLanes();
 }
-// ▲▲▲ [수정] 여기까지 ▲▲▲
 
 function renderAllLanes() {
   const laneContents = {
@@ -341,85 +334,181 @@ function renderAllLanes() {
     main2: "<h5>메인 2</h5>",
     vocab: "<h5>어휘</h5>",
   };
-  if (state.planSegments) {
-    state.planSegments.forEach((segment) => {
-      for (const lane in segment.lanes) {
-        const laneHTML = renderLane(lane, segment);
-        if (laneHTML) {
-          laneContents[lane] += laneHTML;
+
+  const consolidatedBooks = {};
+
+  for (const segment of state.planSegments) {
+    for (const lane in segment.lanes) {
+      for (const book of segment.lanes[lane]) {
+        if (!consolidatedBooks[book.instanceId]) {
+          consolidatedBooks[book.instanceId] = {
+            ...JSON.parse(JSON.stringify(book)),
+            lane: lane,
+            segments: [],
+          };
         }
+        consolidatedBooks[book.instanceId].segments.push({
+          id: segment.id,
+          startDate: segment.startDate,
+          endDate: segment.endDate,
+          startUnitCode: book.startUnitCode,
+          endUnitCode: book.endUnitCode,
+        });
       }
-    });
+    }
   }
+
+  for (const instanceId in consolidatedBooks) {
+    const bookGroup = consolidatedBooks[instanceId];
+    const firstSegment = bookGroup.segments[0];
+    const lastSegment = bookGroup.segments[bookGroup.segments.length - 1];
+
+    const dateRanges = bookGroup.segments
+      .map((s) => `${s.startDate.slice(5)} ~ ${s.endDate.slice(5)}`)
+      .join(", ");
+
+    const startOptions = (bookGroup.units || [])
+      .map(
+        (u) =>
+          `<option value="${u.unit_code}" ${
+            u.unit_code === firstSegment.startUnitCode ? "selected" : ""
+          }>${u.lecture_range || u.lecture || ""} — ${u.title || ""}</option>`
+      )
+      .join("");
+    const endOptions = (bookGroup.units || [])
+      .map(
+        (u) =>
+          `<option value="${u.unit_code}" ${
+            u.unit_code === lastSegment.endUnitCode ? "selected" : ""
+          }>${u.lecture_range || u.lecture || ""} — ${u.title || ""}</option>`
+      )
+      .join("");
+
+    const cardHTML = `
+      <div class="book-card">
+          <div class="muted small" style="padding: 4px; background: #f8fafc;">${dateRanges}</div>
+          <b>${bookGroup.title}</b>
+          <div class="row mt">
+            <div style="flex:1">
+              <label class="small">시작 차시</label>
+              <select data-type="start" data-instance-id="${instanceId}">${startOptions}</select>
+            </div>
+            <div style="flex:1">
+              <label class="small">종료 차시</label>
+              <select data-type="end" data-instance-id="${instanceId}">${endOptions}</select>
+            </div>
+          </div>
+          <button class="btn-xs" style="background:#ef4444; width:auto; margin-top:8px;" onclick="removeFromLane('${instanceId}')">삭제</button>
+      </div>`;
+
+    laneContents[bookGroup.lane] += cardHTML;
+  }
+
   $("#laneMain1").innerHTML = laneContents.main1;
   $("#laneMain2").innerHTML = laneContents.main2;
   $("#laneVocab").innerHTML = laneContents.vocab;
 }
-function renderLane(lane, segment) {
-  const arr = segment.lanes[lane];
-  if (!arr || !arr.length) return "";
-  const segmentHeader = `<div class="muted small" style="padding: 4px; background: #f8fafc;">${segment.startDate} ~ ${segment.endDate}</div>`;
-  const booksHTML = arr
-    .map((b) => {
-      const units = b.units || [];
-      const startOptions = units
-        .map(
-          (u) =>
-            `<option value="${u.unit_code}" ${
-              u.unit_code === b.startUnitCode ? "selected" : ""
-            }>${u.lecture_range || u.lecture || ""} — ${u.title || ""}</option>`
-        )
-        .join("");
-      const endOptions = units
-        .map(
-          (u) =>
-            `<option value="${u.unit_code}" ${
-              u.unit_code === b.endUnitCode ? "selected" : ""
-            }>${u.lecture_range || u.lecture || ""} — ${u.title || ""}</option>`
-        )
-        .join("");
-      return `
-        <div class="book-card">
-            <b>${b.title}</b>
-            <div class="row mt">
-              <div style="flex:1"> <label class="small">시작 차시</label> <select data-type="start" data-lane="${lane}" data-id="${b.instanceId}" data-segment-id="${segment.id}">${startOptions}</select> </div>
-              <div style="flex:1"> <label class="small">종료 차시</label> <select data-type="end" data-lane="${lane}" data-id="${b.instanceId}" data-segment-id="${segment.id}">${endOptions}</select> </div>
-            </div>
-            <button class="btn-xs" style="background:#ef4444; width:auto; margin-top:8px;" onclick="removeFromLane('${segment.id}', '${lane}', '${b.instanceId}')">삭제</button>
-        </div>`;
-    })
-    .join("");
-  return segmentHeader + booksHTML;
-}
+
 document.addEventListener("renderLanesComplete", () => {
   $$("#laneMain1 select, #laneMain2 select, #laneVocab select").forEach(
     (s) => (s.onchange = onUnitChange)
   );
 });
+
 function onUnitChange(e) {
-  const { type, lane, id, segmentId } = e.target.dataset;
-  const segment = state.planSegments.find((s) => s.id === segmentId);
-  if (!segment) return;
-  const book = segment.lanes[lane].find((b) => b.instanceId === id);
-  if (!book) return;
+  const { type, instanceId } = e.target.dataset;
+  const newValue = e.target.value;
+
+  let targetSegment;
   if (type === "start") {
-    book.startUnitCode = e.target.value;
+    targetSegment = state.planSegments.find(
+      (s) =>
+        s.lanes.main1?.some((b) => b.instanceId === instanceId) ||
+        s.lanes.main2?.some((b) => b.instanceId === instanceId) ||
+        s.lanes.vocab?.some((b) => b.instanceId === instanceId)
+    );
   } else {
-    book.endUnitCode = e.target.value;
+    // type === "end"
+    targetSegment = [...state.planSegments]
+      .reverse()
+      .find(
+        (s) =>
+          s.lanes.main1?.some((b) => b.instanceId === instanceId) ||
+          s.lanes.main2?.some((b) => b.instanceId === instanceId) ||
+          s.lanes.vocab?.some((b) => b.instanceId === instanceId)
+      );
   }
+
+  if (targetSegment) {
+    for (const lane in targetSegment.lanes) {
+      const book = targetSegment.lanes[lane].find(
+        (b) => b.instanceId === instanceId
+      );
+      if (book) {
+        if (type === "start") book.startUnitCode = newValue;
+        else book.endUnitCode = newValue;
+        break;
+      }
+    }
+  }
+
   triggerPreview();
 }
-window.removeFromLane = (segmentId, lane, instanceId) => {
-  const segment = state.planSegments.find((s) => s.id === segmentId);
-  if (segment) {
-    segment.lanes[lane] = segment.lanes[lane].filter(
-      (b) => b.instanceId !== instanceId
-    );
-    renderAllLanes();
-    document.dispatchEvent(new Event("renderLanesComplete"));
-    triggerPreview();
+
+window.removeFromLane = (instanceId) => {
+  for (const segment of state.planSegments) {
+    for (const lane in segment.lanes) {
+      segment.lanes[lane] = segment.lanes[lane].filter(
+        (b) => b.instanceId !== instanceId
+      );
+    }
   }
+
+  state.planSegments = state.planSegments.filter((s) =>
+    Object.values(s.lanes).some((lane) => lane.length > 0)
+  );
+
+  mergeAdjacentSegments();
+
+  renderAllLanes();
+  document.dispatchEvent(new Event("renderLanesComplete"));
+  triggerPreview();
 };
+
+function mergeAdjacentSegments() {
+  if (state.planSegments.length < 2) return;
+
+  const merged = [];
+  let current = JSON.parse(JSON.stringify(state.planSegments[0]));
+
+  for (let i = 1; i < state.planSegments.length; i++) {
+    const next = state.planSegments[i];
+
+    const currentBooks = Object.values(current.lanes)
+      .flat()
+      .map((b) => b.instanceId)
+      .sort()
+      .join(",");
+    const nextBooks = Object.values(next.lanes)
+      .flat()
+      .map((b) => b.instanceId)
+      .sort()
+      .join(",");
+
+    if (
+      currentBooks === nextBooks &&
+      getNextDay(current.endDate) === next.startDate
+    ) {
+      current.endDate = next.endDate;
+    } else {
+      merged.push(current);
+      current = JSON.parse(JSON.stringify(next));
+    }
+  }
+  merged.push(current);
+  state.planSegments = merged;
+}
+
 function renderMaterialOptions() {
   const selCat = $("#selMaterialCategory"),
     selSubCat = $("#selMaterialSubCategory"),
@@ -496,14 +585,9 @@ function renderMaterialOptions() {
   }
 }
 
-// --- ★★★ 여기가 핵심 수정 부분 ★★★ ---
-
-let lastSelectedDate = null;
-
 window.handleDateClick = (event, date) => {
-  if (state.isInsertionMode) return; // 삽입 모드 중에는 클릭 방지
+  if (state.isInsertionMode) return;
 
-  // 이전에 선택된 범위가 있거나, 아직 아무것도 선택하지 않았다면 새로 선택을 시작합니다.
   const isNewSelection =
     !state.selectionStart ||
     (state.selectionStart &&
@@ -511,14 +595,10 @@ window.handleDateClick = (event, date) => {
       state.selectionStart !== state.selectionEnd);
 
   if (isNewSelection) {
-    // 새로운 시작점을 설정합니다.
     state.selectionStart = date;
     state.selectionEnd = date;
   } else {
-    // 두 번째 클릭으로 범위를 완성합니다.
     const firstClickDate = state.selectionStart;
-
-    // 두 번째 클릭한 날짜가 첫 번째 클릭보다 이전이면, 두 값을 교체해줍니다.
     if (date < firstClickDate) {
       state.selectionStart = date;
       state.selectionEnd = firstClickDate;
@@ -554,14 +634,11 @@ function updateSelectionUI() {
   }
 }
 
-// ★ 신규: 삽입 모드 진입/종료를 관리하는 함수
 async function toggleInsertionMode() {
   if (state.isInsertionMode) {
-    // --- 삽입 모드 종료 ---
     alert("교재 삽입을 완료했습니다.");
     exitInsertionMode();
   } else {
-    // --- 삽입 모드 진입 ---
     if (!state.selectionStart) {
       return alert("먼저 미리보기에서 기간을 선택해주세요.");
     }
@@ -573,7 +650,6 @@ async function toggleInsertionMode() {
     }
 
     try {
-      // 1. 계획표를 '이전' - '삽입' - '이후' 3조각으로 딱 한 번만 자른다.
       const itemsBefore = await getPlanItems(
         targetSegment.startDate,
         getPreviousDay(start),
@@ -617,7 +693,7 @@ async function toggleInsertionMode() {
         startDate: start,
         endDate: end,
         days: targetSegment.days,
-        lanes: { main1: [], main2: [], vocab: [] }, // 완전히 빈 삽입 구간
+        lanes: { main1: [], main2: [], vocab: [] },
       };
       const afterSegment = {
         ...targetSegment,
@@ -636,11 +712,9 @@ async function toggleInsertionMode() {
       ].filter((s) => s.startDate <= s.endDate);
       state.planSegments.splice(originalIndex, 1, ...segmentsToInsert);
 
-      // 2. 상태를 '삽입 모드'로 바꾸고, 새로 생긴 '삽입 구간'의 ID를 기억해둔다.
       state.isInsertionMode = true;
       state.insertionSegmentId = insertionSegment.id;
 
-      // 3. UI를 '삽입 모드'용으로 바꾼다.
       $("#btnInsertMode").textContent = "✅ 교재 삽입 완료하기";
       $("#btnAddBook").textContent = "선택 기간에 삽입";
       $("#planEditor").scrollIntoView({ behavior: "smooth" });
@@ -654,22 +728,18 @@ async function toggleInsertionMode() {
   }
 }
 
-// ★ 신규: 삽입 모드를 깔끔하게 종료하는 함수
 function exitInsertionMode() {
   state.isInsertionMode = false;
   state.insertionSegmentId = null;
   state.selectionStart = null;
   state.selectionEnd = null;
-  lastSelectedDate = null;
 
   $("#btnAddBook").textContent = "레인에 추가";
-  updateSelectionUI(); // 버튼과 선택 영역을 모두 초기화
+  updateSelectionUI();
 }
 
-// ★ 수정됨: addBookToLane 로직 단순화
 async function addBookToLane() {
   if (state.isInsertionMode) {
-    // 삽입 모드에서는, 기억해둔 '삽입 구간'에 책만 추가한다.
     if (state.insertionSegmentId) {
       await addBookToSegment(state.insertionSegmentId);
     } else {
@@ -677,7 +747,6 @@ async function addBookToLane() {
       exitInsertionMode();
     }
   } else {
-    // 일반 모드에서는, 가장 첫 번째 구간에 책을 추가한다.
     const segment =
       state.planSegments.length > 0 ? state.planSegments[0] : null;
     if (segment) {
@@ -687,8 +756,6 @@ async function addBookToLane() {
     }
   }
 }
-
-// --- 나머지 헬퍼 함수들 (변경 없음) ---
 
 async function addBookToSegment(segmentId) {
   const segment = state.planSegments.find((s) => s.id === segmentId);
@@ -731,6 +798,7 @@ function findTargetSegmentForInsertion() {
   );
   return { start, end, targetSegment };
 }
+
 async function getPlanItems(startDate, endDate, segment) {
   if (startDate > endDate) return [];
   const defaultSchedule =
@@ -755,16 +823,19 @@ async function getPlanItems(startDate, endDate, segment) {
   });
   return res.items || [];
 }
+
 function getPreviousDay(dateStr) {
   const date = new Date(dateStr);
   date.setUTCDate(date.getUTCDate() - 1);
   return date.toISOString().slice(0, 10);
 }
+
 function getNextDay(dateStr) {
   const date = new Date(dateStr);
   date.setUTCDate(date.getUTCDate() + 1);
   return date.toISOString().slice(0, 10);
 }
+
 async function savePlan() {
   if (!state.selectedStudent) return alert("학생을 선택하세요.");
   const planToSave = {
@@ -827,6 +898,7 @@ async function savePlan() {
     alert(`저장 실패: ${e.message}`);
   }
 }
+
 async function deletePlan(planId) {
   if (!confirm("정말 이 플랜을 삭제하시겠습니까?")) return;
   try {
@@ -842,6 +914,7 @@ async function deletePlan(planId) {
   }
 }
 window.deletePlan = deletePlan;
+
 async function loadPlanForEditing(planId) {
   const plan = state.studentPlans.find((p) => p.planId === planId);
   if (!plan) return alert("플랜 정보를 찾을 수 없습니다.");
@@ -887,7 +960,6 @@ async function loadPlanForEditing(planId) {
     $("#startDate").value = state.planSegments[0].startDate;
     $("#endDate").value =
       state.planSegments[state.planSegments.length - 1].endDate;
-    // 요일은 첫 번째 구간의 설정을 대표로 표시합니다.
     $("#customDays").value = state.planSegments[0].days || "";
   }
 
@@ -907,6 +979,7 @@ async function loadPlanForEditing(planId) {
   triggerPreview();
 }
 window.loadPlanForEditing = loadPlanForEditing;
+
 function attachModalEventListeners() {
   $$("#skipModal [data-type]").forEach((btn) => {
     btn.onclick = () => saveSkip(btn.dataset.type);
@@ -915,6 +988,7 @@ function attachModalEventListeners() {
   $("#btnSkipDelete").onclick = deleteSkip;
   $("#btnSkipClose").onclick = closeSkipModal;
 }
+
 function openSkipModal(date) {
   const modal = $("#skipModal");
   modal.dataset.date = date;
@@ -925,9 +999,11 @@ function openSkipModal(date) {
   modal.style.display = "flex";
 }
 window.openSkipModal = openSkipModal;
+
 function closeSkipModal() {
   $("#skipModal").style.display = "none";
 }
+
 function saveSkip(type) {
   const date = $("#skipModal").dataset.date;
   const reason = $("#skipReason").value.trim();
@@ -941,12 +1017,14 @@ function saveSkip(type) {
   closeSkipModal();
   triggerPreview();
 }
+
 function deleteSkip() {
   const date = $("#skipModal").dataset.date;
   delete state.userSkips[date];
   closeSkipModal();
   triggerPreview();
 }
+
 function renderPrintable(items, ctx) {
   const dates = [...new Set(items.map((i) => i.date))].sort();
   const studentHeader = `<div style="margin-bottom:12px;"><b>${ctx.studentNames.join(
@@ -988,7 +1066,7 @@ function renderPrintable(items, ctx) {
       const dateString = `<b>${d.slice(2).replace(/-/g, ".")} (${dayName})</b>`;
       const tag = `data-date="${d}" onclick="handleDateClick(event, '${d}')" style="cursor:pointer;"`;
       if (skip) {
-        return `<tr ${tag}><td >${dateString}</td><td colspan="12" style="color:#64748b;background:#f8fafc;">${skip.reason}</td></tr>`;
+        return `<tr ${tag}><td>${dateString}</td><td colspan="12" style="color:#64748b;background:#f8fafc;">${skip.reason}</td></tr>`;
       }
       const m1 = dayItems.find(
         (x) => x.source === "main" && x.lane === "main1"
