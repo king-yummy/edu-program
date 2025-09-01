@@ -1,15 +1,8 @@
-// /api/plan.js — 원상 복구
+// /api/plan.js — 최종 수정본
 
 import { generatePlan } from "../lib/schedule.js";
-import { getAllTests } from "../lib/kv.js";
-
-const toYMD = (d) => {
-  try {
-    return new Date(d).toISOString().slice(0, 10);
-  } catch {
-    return "";
-  }
-};
+// [수정] 기존 tests 로직 대신 새로운 events 로직을 불러옵니다.
+import { getEvents } from "../lib/kv.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -27,42 +20,27 @@ export default async function handler(req, res) {
     return res.status(400).json({ ok: false, error: "Invalid JSON body" });
   }
 
+  // [수정] studentInfo를 받고, 불필요한 classId는 제거합니다.
   const {
-    classId = "",
     startDate,
     endDate,
     days,
     lanes = {},
     userSkips = [],
+    studentInfo = {}, // 학생 정보
   } = body;
 
-  if (!startDate) {
+  if (!startDate || !endDate) {
     return res
       .status(400)
-      .json({ ok: false, error: "startDate required (YYYY-MM-DD)" });
-  }
-  if (!endDate) {
-    return res
-      .status(400)
-      .json({ ok: false, error: "endDate required (YYYY-MM-DD)" });
-  }
-
-  let testsInRange = [];
-  try {
-    const allTests = await getAllTests();
-    if (Array.isArray(allTests)) {
-      testsInRange = allTests
-        .filter((t) => String(t.classId) === String(classId))
-        .filter((t) => {
-          const testDate = toYMD(t.date);
-          return testDate >= toYMD(startDate) && testDate <= toYMD(endDate);
-        });
-    }
-  } catch {
-    // KV 조회 실패 시 무시
+      .json({ ok: false, error: "startDate와 endDate가 필요합니다." });
   }
 
   try {
+    // [수정] 모든 이벤트를 가져옵니다.
+    const allEvents = await getEvents();
+
+    // [수정] generatePlan 함수에 events와 studentInfo를 전달합니다.
     const items = await generatePlan({
       startDate,
       endDate,
@@ -70,12 +48,14 @@ export default async function handler(req, res) {
         typeof days === "string" && days ? days.toUpperCase() : "MON,WED,FRI",
       lanes,
       userSkips,
-      tests: testsInRange,
+      events: allEvents,
+      studentInfo,
     });
     return res.status(200).json({ ok: true, items });
   } catch (e) {
+    console.error("플랜 생성 실패:", e);
     return res
       .status(500)
-      .json({ ok: false, error: e.message || "plan failed" });
+      .json({ ok: false, error: e.message || "plan generation failed" });
   }
 }
