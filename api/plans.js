@@ -1,15 +1,16 @@
-// /api/plans.js
+// /api/plans.js — 최종 수정본
 
 import { kv } from "@vercel/kv";
 import { generatePlan } from "../lib/schedule.js";
-import { getAllTests } from "../lib/kv.js";
+// [추가] 새로운 이벤트 로직을 불러옵니다.
+import { getEvents } from "../lib/kv.js";
 
 // KV 데이터베이스가 준비되었는지 확인하는 함수
 function isKvReady() {
   return !!(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
 }
 
-// 학생의 모든 플랜을 가져오는 함수 (안정성 강화)
+// 학생의 모든 플랜을 가져오는 함수
 async function getPlansByStudent(studentId) {
   if (!studentId || !isKvReady()) {
     return [];
@@ -22,7 +23,7 @@ async function getPlansByStudent(studentId) {
   }
 }
 
-// 학생의 모든 플랜을 저장하는 함수 (안정성 강화)
+// 학생의 모든 플랜을 저장하는 함수
 async function savePlansForStudent(studentId, plans) {
   if (!isKvReady()) {
     throw new Error("저장 기능(KV 데이터베이스)이 설정되지 않았습니다.");
@@ -46,13 +47,11 @@ export default async function handler(req, res) {
     }
   }
 
-  // --- POST: 새 플랜 생성 (단일/다수 학생) ---
+  // --- POST: 새 플랜 생성 ---
   if (req.method === "POST") {
     try {
       if (!isKvReady()) {
-        throw new Error(
-          "저장 기능(KV 데이터베이스)이 설정되지 않아 플랜을 생성할 수 없습니다."
-        );
+        throw new Error("저장 기능이 설정되지 않아 플랜을 생성할 수 없습니다.");
       }
       const body = req.body;
       const { students, ...planConfig } = body;
@@ -62,21 +61,18 @@ export default async function handler(req, res) {
           .json({ ok: false, error: "Students array is required." });
       }
 
-      const allTests = await getAllTests();
-      const testsInRange = allTests.filter((t) => {
-        const testDate = new Date(t.date).toISOString().slice(0, 10);
-        return (
-          testDate >= planConfig.startDate && testDate <= planConfig.endDate
-        );
-      });
+      // [수정] getAllTests() 대신 새로운 getEvents() 사용
+      const allEvents = await getEvents();
 
-      const generatedItems = await generatePlan({
-        ...planConfig,
-        tests: testsInRange,
-      });
-
+      // 학생별로 플랜을 생성하고 저장합니다.
       for (const student of students) {
         const studentPlans = await getPlansByStudent(student.id);
+        const generatedItems = await generatePlan({
+          ...planConfig,
+          events: allEvents, // 생성 로직에 events 전달
+          studentInfo: student, // 학생 정보 전달
+        });
+
         const newPlan = {
           planId: `pln_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
           studentId: student.id,
@@ -97,12 +93,10 @@ export default async function handler(req, res) {
   if (req.method === "PUT" && planId) {
     try {
       if (!isKvReady()) {
-        throw new Error(
-          "저장 기능(KV 데이터베이스)이 설정되지 않아 플랜을 수정할 수 없습니다."
-        );
+        throw new Error("저장 기능이 설정되지 않아 플랜을 수정할 수 없습니다.");
       }
       const body = req.body;
-      const { studentId, ...planConfig } = body;
+      const { studentId, studentInfo, ...planConfig } = body;
       const studentPlans = await getPlansByStudent(studentId);
       const planIndex = studentPlans.findIndex((p) => p.planId === planId);
 
@@ -110,17 +104,13 @@ export default async function handler(req, res) {
         return res.status(404).json({ ok: false, error: "Plan not found." });
       }
 
-      const allTests = await getAllTests();
-      const testsInRange = allTests.filter((t) => {
-        const testDate = new Date(t.date).toISOString().slice(0, 10);
-        return (
-          testDate >= planConfig.startDate && testDate <= planConfig.endDate
-        );
-      });
+      // [수정] getAllTests() 대신 새로운 getEvents() 사용
+      const allEvents = await getEvents();
 
       const updatedItems = await generatePlan({
         ...planConfig,
-        tests: testsInRange,
+        events: allEvents, // 생성 로직에 events 전달
+        studentInfo: studentInfo, // 학생 정보 전달
       });
 
       studentPlans[planIndex].context = planConfig;
@@ -138,9 +128,7 @@ export default async function handler(req, res) {
   if (req.method === "DELETE" && planId) {
     try {
       if (!isKvReady()) {
-        throw new Error(
-          "저장 기능(KV 데이터베이스)이 설정되지 않아 플랜을 삭제할 수 없습니다."
-        );
+        throw new Error("저장 기능이 설정되지 않아 플랜을 삭제할 수 없습니다.");
       }
       const { studentId } = req.query;
       let studentPlans = await getPlansByStudent(studentId);
