@@ -92,6 +92,25 @@ const triggerPreview = debounce(async () => {
   );
 }, 500);
 
+// ▼▼▼ [추가] 이 함수를 복사해서 붙여넣으세요. ▼▼▼
+function updatePlanSegmentDetails() {
+  if (state.planSegments.length > 0 && state.selectedStudent) {
+    const segment = state.planSegments[0];
+    segment.startDate = $("#startDate").value;
+    segment.endDate = $("#endDate").value;
+
+    const defaultSchedule =
+      state.allClasses.find((c) => c.id === state.selectedStudent.class_id)
+        ?.schedule_days || "MON,WED,FRI";
+    segment.days = $("#customDays").value || defaultSchedule;
+
+    renderAllLanes();
+    document.dispatchEvent(new Event("renderLanesComplete"));
+    triggerPreview();
+  }
+}
+// ▲▲▲ [추가] 여기까지 ▲▲▲
+
 document.addEventListener("DOMContentLoaded", boot);
 
 async function boot() {
@@ -129,7 +148,12 @@ function attachEventListeners() {
   $("#btnAddBook").onclick = addBookToLane;
   $("#btnSave").onclick = savePlan;
   $("#btnPrint").onclick = () => window.print();
-  $("#btnInsertMode").onclick = toggleInsertionMode; // ★ 수정됨
+  $("#btnInsertMode").onclick = toggleInsertionMode;
+  // ▼▼▼ [추가] 아래 3줄을 추가하세요. ▼▼▼
+  $("#startDate").onchange = updatePlanSegmentDetails;
+  $("#endDate").onchange = updatePlanSegmentDetails;
+  $("#customDays").oninput = updatePlanSegmentDetails;
+  // ▲▲▲ [추가] 여기까지 ▲▲▲
 }
 
 // --- 이벤트 관리 (변경 없음) ---
@@ -260,33 +284,52 @@ function renderExistingPlans() {
     .join("");
 }
 
-// --- 플랜 편집기 UI (변경 없음) ---
+// ▼▼▼ [수정] 아래 두 함수를 통째로 바꿔주세요. ▼▼▼
 function showPlanEditorForNewPlan() {
   state.editingPlanId = null;
-  clearPlanEditor();
-  $("#planActions").style.display = "none";
-  $("#planEditor").style.display = "block";
-  $("#btnSave").textContent = "새 플랜 저장하기";
-}
-function clearPlanEditor() {
+
+  // 1. UI에 기본값 설정
   const today = new Date().toISOString().slice(0, 10);
+  $("#startDate").value = today;
+  $("#endDate").value = today;
+  const defaultSchedule = state.selectedStudent
+    ? state.allClasses.find((c) => c.id === state.selectedStudent.class_id)
+        ?.schedule_days || "MON,WED,FRI"
+    : "MON,WED,FRI";
+  $("#customDays").value = defaultSchedule;
+
+  // 2. UI 값으로 state 초기화 (clearPlanEditor의 핵심 기능 이전)
   state.planSegments = [
     {
       id: `seg_${Date.now()}`,
-      startDate: today,
-      endDate: today,
-      days: state.selectedStudent
-        ? state.allClasses.find((c) => c.id === state.selectedStudent.class_id)
-            ?.schedule_days || "MON,WED,FRI"
-        : "MON,WED,FRI",
+      startDate: $("#startDate").value,
+      endDate: $("#endDate").value,
+      days: defaultSchedule,
       lanes: { main1: [], main2: [], vocab: [] },
     },
   ];
   state.userSkips = {};
+
+  // 3. 화면 업데이트 및 에디터 표시
   renderAllLanes();
   document.dispatchEvent(new Event("renderLanesComplete"));
   $("#result").innerHTML = "교재를 추가하고 기간을 설정하세요.";
+  $("#planActions").style.display = "none";
+  $("#planEditor").style.display = "block";
+  $("#btnSave").textContent = "새 플랜 저장하기";
+  triggerPreview();
 }
+
+function clearPlanEditor() {
+  // 이 함수의 내용은 대부분 showPlanEditorForNewPlan으로 옮겨졌습니다.
+  // 이젠 최소한의 정리만 수행하도록 단순화하거나,
+  // showPlanEditorForNewPlan 호출로 대체해도 무방합니다.
+  state.planSegments = [];
+  state.userSkips = {};
+  renderAllLanes();
+}
+// ▲▲▲ [수정] 여기까지 ▲▲▲
+
 function renderAllLanes() {
   const laneContents = {
     main1: "<h5>메인 1</h5>",
