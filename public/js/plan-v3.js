@@ -1,4 +1,4 @@
-// /public/js/plan-v3.js — 최종 수정본 (내신 플랜 수정 기능 추가)
+// /public/js/plan-v3.js — 최종 수정본 (내신 플랜 미리보기 요일 선택 기능 추가)
 
 const $ = (q) => document.querySelector(q);
 const $$ = (q) => document.querySelectorAll(q);
@@ -42,6 +42,7 @@ const state = {
   examPlans: [],
   examPlanLanes: { main1: [], main2: [], vocab: [] },
   editingExamPlanId: null,
+  examPreviewDays: new Set(), // ◀◀◀ 내신 플랜 미리보기용 요일 상태 추가
 };
 
 const triggerPreview = debounce(async () => {
@@ -94,7 +95,7 @@ const triggerPreview = debounce(async () => {
       startDate: finalStartDate,
       endDate: finalEndDate,
     },
-    "#result" // 일반 플랜 미리보기는 #result에 렌더링
+    "#result"
   );
 }, 500);
 
@@ -208,9 +209,23 @@ function attachEventListeners() {
   $("#btnSaveExamPlan").onclick = saveExamPlan;
   $("#examStartDate").onchange = triggerExamPreview;
   $("#examEndDate").onchange = triggerExamPreview;
+
+  // ▼▼▼ 내신 플랜 미리보기 요일 선택기 이벤트 리스너 추가 ▼▼▼
+  $$("#examPreviewDaySelector button").forEach((btn) => {
+    btn.onclick = () => {
+      const day = btn.dataset.day;
+      if (state.examPreviewDays.has(day)) {
+        state.examPreviewDays.delete(day);
+      } else {
+        state.examPreviewDays.add(day);
+      }
+      renderExamPreviewDaySelector();
+      triggerExamPreview(); // 요일 변경 시 미리보기 자동 갱신
+    };
+  });
+  // ▲▲▲ 여기까지 추가 ▲▲▲
 }
 
-// ... (이전 코드와 동일한 함수들은 생략) ...
 function renderDaySelector() {
   $$("#daySelector button").forEach((btn) => {
     if (state.selectedDays.has(btn.dataset.day)) {
@@ -1382,6 +1397,20 @@ async function onExamSchoolOrGradeChange() {
 
   if (!school || !grade) return;
 
+  // ▼▼▼ 대표 학생 요일로 미리보기 요일 선택기 초기화 ▼▼▼
+  const representativeStudent = state.allStudents.find(
+    (s) => s.school === school && String(s.grade) === String(grade)
+  );
+  if (representativeStudent) {
+    const studentClass = state.allClasses.find(
+      (c) => c.id === representativeStudent.class_id
+    );
+    const scheduleDays = studentClass?.schedule_days || "MON,WED,FRI";
+    state.examPreviewDays = new Set(scheduleDays.split(","));
+    renderExamPreviewDaySelector();
+  }
+  // ▲▲▲ 여기까지 수정 ▲▲▲
+
   actionsEl.style.display = "block";
   try {
     const res = await api(
@@ -1625,10 +1654,16 @@ const triggerExamPreview = debounce(async () => {
   }
 
   const representativeStudent = targetStudents[0];
-  const studentClass = state.allClasses.find(
-    (c) => c.id === representativeStudent.class_id
-  );
-  const studentScheduleDays = studentClass?.schedule_days || "MON,WED,FRI";
+
+  // ▼▼▼ 고정된 요일 대신 상태 값(state.examPreviewDays) 사용으로 수정 ▼▼▼
+  const previewScheduleDays = [...state.examPreviewDays].join(",");
+  if (!previewScheduleDays) {
+    $(
+      "#examResult"
+    ).innerHTML = `<div class="muted" style="padding:16px;">미리보기를 할 요일을 선택하세요.</div>`;
+    return;
+  }
+  // ▲▲▲ 여기까지 수정 ▲▲▲
 
   const startDate = $("#examStartDate").value;
   const endDate = $("#examEndDate").value;
@@ -1660,7 +1695,7 @@ const triggerExamPreview = debounce(async () => {
   const body = {
     startDate,
     endDate,
-    days: studentScheduleDays,
+    days: previewScheduleDays, // ◀◀◀ 수정된 요일 값 사용
     lanes,
     userSkips: [],
     events: state.allEvents,
@@ -1676,7 +1711,6 @@ const triggerExamPreview = debounce(async () => {
     });
     if (!res.ok) throw new Error(res.error);
 
-    // [수정] 내신 플랜 미리보기는 #examResult에 렌더링
     renderPrintable(
       res.items,
       {
@@ -1719,7 +1753,6 @@ async function saveExamPlan() {
 
   try {
     if (state.editingExamPlanId) {
-      // --- 수정 로직 ---
       await api("/api/exam-plans", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -1732,7 +1765,6 @@ async function saveExamPlan() {
       });
       alert("내신 플랜이 성공적으로 수정되었습니다.");
     } else {
-      // --- 생성 로직 ---
       await api("/api/exam-plans", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1741,7 +1773,6 @@ async function saveExamPlan() {
       alert("내신 플랜이 성공적으로 저장되고, 대상 학생들에게 적용되었습니다.");
     }
 
-    // 공통: 상태 초기화 및 목록 새로고침
     state.editingExamPlanId = null;
     $("#examPlanEditor").style.display = "none";
     onExamSchoolOrGradeChange();
@@ -1773,3 +1804,15 @@ window.deleteExamPlan = async (examPlanId, school, grade) => {
     alert(`삭제 실패: ${e.message}`);
   }
 };
+
+// ▼▼▼ 내신 플랜 미리보기 요일 선택기 UI 렌더링 함수 추가 ▼▼▼
+function renderExamPreviewDaySelector() {
+  $$("#examPreviewDaySelector button").forEach((btn) => {
+    if (state.examPreviewDays.has(btn.dataset.day)) {
+      btn.classList.add("active");
+    } else {
+      btn.classList.remove("active");
+    }
+  });
+}
+// ▲▲▲ 여기까지 추가 ▲▲▲

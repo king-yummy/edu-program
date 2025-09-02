@@ -1,9 +1,9 @@
-// /api/exam-plans.js — 최종 수정본 (수정 API 추가)
+// /api/exam-plans.js
 
 import { kv } from "@vercel/kv";
 import { readSheetObjects } from "../lib/sheets.js";
 
-// --- 날짜 계산을 위한 Helper 함수들 ---
+// --- 날짜 계산을 위한 Helper 함수들 (변경 없음) ---
 const DOW = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
 const toUtcDate = (dateString) => {
   if (!dateString || typeof dateString !== "string") {
@@ -23,7 +23,6 @@ const addDays = (d, n) => {
   return x;
 };
 
-/** 특정 기간 내에 포함된 수업일수(class days)를 계산하는 함수 */
 function countClassDays(startDate, endDate, classDaysSet) {
   let count = 0;
   const start = toUtcDate(startDate);
@@ -37,7 +36,6 @@ function countClassDays(startDate, endDate, classDaysSet) {
   return count;
 }
 
-/** 특정 날짜로부터 N개의 수업일수만큼 뒤의 날짜를 계산하는 함수 */
 function shiftDateByClassDays(startDate, daysToShift, classDaysSet) {
   let shiftedDate = new Date(startDate);
   if (daysToShift <= 0) return shiftedDate;
@@ -51,7 +49,7 @@ function shiftDateByClassDays(startDate, daysToShift, classDaysSet) {
   return shiftedDate;
 }
 
-// --- KV 저장을 위한 Helper 함수들 ---
+// --- KV 저장을 위한 Helper 함수들 (변경 없음) ---
 function isKvReady() {
   return !!(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
 }
@@ -70,7 +68,7 @@ export default async function handler(req, res) {
       .json({ ok: false, error: "KV 데이터베이스가 설정되지 않았습니다." });
   }
 
-  // --- GET: 내신 플랜 목록 조회 ---
+  // --- GET: 내신 플랜 목록 조회 (변경 없음) ---
   if (req.method === "GET") {
     const { school, grade } = req.query;
     if (!school || !grade) {
@@ -121,14 +119,19 @@ export default async function handler(req, res) {
         const studentClass = allClasses.find((c) => c.id === student.class_id);
         const studentScheduleDays =
           studentClass?.schedule_days || "MON,WED,FRI";
-        const studentClassDaysSet = new Set(
-          studentScheduleDays.split(",").map((s) => s.trim().toUpperCase())
-        );
 
         const studentPlanKey = getStudentPlanKey(student.id);
         let studentPlans = (await kv.get(studentPlanKey)) || [];
 
-        const examSegmentData = { ...planData, days: studentScheduleDays };
+        // [수정] 각 학생의 개별 수강 요일을 사용하여 내신 플랜 구간 데이터를 명시적으로 생성합니다.
+        // 이 수정으로 인해 대표 학생의 요일이 다른 학생에게 잘못 적용되던 문제를 해결합니다.
+        const examSegmentData = {
+          title: planData.title,
+          startDate: planData.startDate,
+          endDate: planData.endDate,
+          lanes: planData.lanes,
+          days: studentScheduleDays,
+        };
 
         if (studentPlans.length === 0) {
           const newPlan = {
@@ -154,7 +157,9 @@ export default async function handler(req, res) {
         const daysToShift = countClassDays(
           examStartDate,
           examEndDate,
-          studentClassDaysSet
+          new Set(
+            studentScheduleDays.split(",").map((s) => s.trim().toUpperCase())
+          )
         );
 
         if (daysToShift <= 0) {
@@ -191,6 +196,12 @@ export default async function handler(req, res) {
               endDate: toYMD(addDays(examStartDateUtc, -1)),
             });
 
+            const studentClassDaysSet = new Set(
+              (segment.days || studentScheduleDays)
+                .split(",")
+                .map((s) => s.trim().toUpperCase())
+            );
+
             const newPartB_Start = shiftDateByClassDays(
               examStartDateUtc,
               daysToShift,
@@ -213,6 +224,12 @@ export default async function handler(req, res) {
           }
 
           if (segmentStartUtc >= examStartDateUtc) {
+            const studentClassDaysSet = new Set(
+              (segment.days || studentScheduleDays)
+                .split(",")
+                .map((s) => s.trim().toUpperCase())
+            );
+
             const newSeg_Start = shiftDateByClassDays(
               segmentStartUtc,
               daysToShift,
@@ -256,17 +273,15 @@ export default async function handler(req, res) {
     }
   }
 
-  // --- [신규] PUT: 기존 내신 플랜 수정 ---
+  // --- PUT: 기존 내신 플랜 수정 (변경 없음) ---
   if (req.method === "PUT") {
     try {
       const { school, grade, examPlanId, planData } = req.body;
       if (!school || !grade || !examPlanId || !planData) {
-        return res
-          .status(400)
-          .json({
-            ok: false,
-            error: "school, grade, examPlanId, planData가 필요합니다.",
-          });
+        return res.status(400).json({
+          ok: false,
+          error: "school, grade, examPlanId, planData가 필요합니다.",
+        });
       }
 
       const examPlanKey = getExamPlanKey(school, grade);
@@ -280,12 +295,11 @@ export default async function handler(req, res) {
           .json({ ok: false, error: "수정할 내신 플랜을 찾지 못했습니다." });
       }
 
-      // 기존 데이터에 업데이트된 데이터를 덮어씀
       examPlans[planIndex] = {
-        ...examPlans[planIndex], // createdAt 등 기존 필드 유지
-        ...planData, // 프론트에서 보낸 새 데이터
-        id: examPlanId, // id는 변경되지 않도록 보장
-        updatedAt: new Date().toISOString(), // 수정 시각 기록
+        ...examPlans[planIndex],
+        ...planData,
+        id: examPlanId,
+        updatedAt: new Date().toISOString(),
       };
 
       await kv.set(examPlanKey, examPlans);
@@ -299,6 +313,7 @@ export default async function handler(req, res) {
     }
   }
 
+  // --- DELETE: 내신 플랜 삭제 (변경 없음) ---
   if (req.method === "DELETE") {
     try {
       const { school, grade, examPlanId } = req.query;
