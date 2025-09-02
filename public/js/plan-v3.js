@@ -252,7 +252,7 @@ function renderEvents() {
 }
 // ▲▲▲ [수정] renderEvents 함수 수정 ▲▲▲
 
-// ▼▼▼ [수정] addEvent → addEventOrSup 함수로 통합 및 수정 ▼▼▼
+// ▼▼▼ [수정] addEventOrSup 함수 내부 오류 수정 ▼▼▼
 async function addEventOrSup(type) {
   const isSup = type === "supplementary";
   const prefix = isSup ? "sup" : "event";
@@ -265,7 +265,12 @@ async function addEventOrSup(type) {
     : document.querySelector('input[name="applyTo"]:checked').value;
 
   let scopeValue = "";
-  const container = $(`#${isSup ? "sup" : ""}ScopedValueContainer`);
+  // [오류 수정] ID 셀렉터를 정확하게 지정하도록 수정했습니다.
+  const container = $(
+    isSup ? "#supScopedValueContainer" : "#scopedValueContainer"
+  );
+
+  // 이제 container가 null이 아니므로 아래 코드가 정상적으로 실행됩니다.
   const inputs = container.querySelectorAll("select, input");
 
   if (scope === "school_grade" && inputs.length === 2) {
@@ -296,7 +301,7 @@ async function addEventOrSup(type) {
     alert(`추가 실패: ${e.message}`);
   }
 }
-// ▲▲▲ [수정] addEvent → addEventOrSup 함수로 통합 및 수정 ▲▲▲
+// ▲▲▲ [수정] addEventOrSup 함수 내부 오류 수정 ▲▲▲
 
 async function deleteEvent(eventId) {
   if (!confirm("정말 이 이벤트를 삭제하시겠습니까?")) return;
