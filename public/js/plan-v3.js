@@ -1,4 +1,4 @@
-// /public/js/plan-v3.js — 최종 수정본 (내신 플랜 기능 추가)
+// /public/js/plan-v3.js — 최종 수정본 (내신 플랜 요일 선택 기능 제거)
 
 const $ = (q) => document.querySelector(q);
 const $$ = (q) => document.querySelectorAll(q);
@@ -23,7 +23,6 @@ const debounce = (func, delay) => {
   };
 };
 
-// --- state 객체에 내신 플랜 관련 상태 추가 ---
 const state = {
   allStudents: [],
   allMaterials: [],
@@ -40,12 +39,10 @@ const state = {
   insertionSegmentId: null,
   selectedDays: new Set(),
   currentEventMonth: new Date(),
-  // ▼▼▼ [추가] 내신 플랜 관련 상태 ▼▼▼
   examPlans: [],
   examPlanLanes: { main1: [], main2: [], vocab: [] },
-  selectedExamDays: new Set(["MON", "TUE", "WED", "THU", "FRI"]), // 기본값 월-금
+  // [수정] selectedExamDays 상태 삭제
   editingExamPlanId: null,
-  // ▲▲▲ [추가] 내신 플랜 관련 상태 ▲▲▲
 };
 
 const triggerPreview = debounce(async () => {
@@ -142,10 +139,8 @@ async function boot() {
     attachModalEventListeners();
     renderScopedEventInputs("event");
     renderScopedEventInputs("supplementary");
-    // ▼▼▼ [추가] 내신 플랜 관련 초기화 함수 호출 ▼▼▼
     renderExamSchoolAndGradeSelectors();
     renderExamMaterialOptions();
-    // ▲▲▲ [추가] 내신 플랜 관련 초기화 함수 호출 ▲▲▲
   } catch (e) {
     console.error("초기화 실패:", e);
     alert(`페이지를 불러오는 데 실패했습니다: ${e.message}`);
@@ -155,7 +150,6 @@ async function boot() {
 function attachEventListeners() {
   $("#btnAddEvent").onclick = () => addEventOrSup("event");
   $("#btnAddSupplementary").onclick = () => addEventOrSup("supplementary");
-
   $$(".tab-button").forEach((button) => {
     button.onclick = () => {
       const tabId = button.dataset.tab;
@@ -169,7 +163,6 @@ function attachEventListeners() {
       ).classList.add("active");
     };
   });
-
   $("#studentSearchInput").oninput = (e) => renderStudentList(e.target.value);
   $("#btnAddNewPlan").onclick = showPlanEditorForNewPlan;
   $("#selMaterialCategory").onchange = renderMaterialOptions;
@@ -179,7 +172,6 @@ function attachEventListeners() {
   $("#btnInsertMode").onclick = toggleInsertionMode;
   $("#startDate").onchange = updatePlanSegmentDetails;
   $("#endDate").onchange = updatePlanSegmentDetails;
-
   $("#btnPrevMonth").onclick = () => {
     state.currentEventMonth.setMonth(state.currentEventMonth.getMonth() - 1);
     renderEvents();
@@ -188,10 +180,8 @@ function attachEventListeners() {
     state.currentEventMonth.setMonth(state.currentEventMonth.getMonth() + 1);
     renderEvents();
   };
-
   $("#eventScope").onchange = () => renderScopedEventInputs("event");
   $("#supScope").onchange = () => renderScopedEventInputs("supplementary");
-
   $$("#daySelector button").forEach((btn) => {
     btn.onclick = () => {
       const day = btn.dataset.day;
@@ -205,7 +195,6 @@ function attachEventListeners() {
     };
   });
 
-  // ▼▼▼ [추가] 내신 플랜 관련 이벤트 리스너 ▼▼▼
   $("#examPlanHeader").onclick = () => {
     $("#examPlanHeader").classList.toggle("active");
     const content = $("#examPlanContent");
@@ -218,18 +207,7 @@ function attachEventListeners() {
   $("#btnAddExamBook").onclick = addBookToExamLane;
   $("#btnSaveExamPlan").onclick = saveExamPlan;
 
-  $$("#examDaySelector button").forEach((btn) => {
-    btn.onclick = () => {
-      const day = btn.dataset.day;
-      if (state.selectedExamDays.has(day)) {
-        state.selectedExamDays.delete(day);
-      } else {
-        state.selectedExamDays.add(day);
-      }
-      renderExamDaySelector();
-    };
-  });
-  // ▲▲▲ [추가] 내신 플랜 관련 이벤트 리스너 ▲▲▲
+  // [수정] 내신 플랜 요일 선택기 이벤트 리스너 삭제
 }
 
 function renderDaySelector() {
@@ -1345,8 +1323,6 @@ function prepareAndPrint() {
   window.print();
 }
 
-// ▼▼▼ [추가] 내신 플랜 관련 함수들 ▼▼▼
-
 /** 내신 플랜 섹션의 학교/학년 드롭다운을 렌더링합니다. */
 function renderExamSchoolAndGradeSelectors() {
   const schoolSelector = $("#examSchoolSelector");
@@ -1443,9 +1419,7 @@ function showExamPlanEditorForNewPlan() {
   $("#examStartDate").value = today;
   $("#examEndDate").value = today;
 
-  state.selectedExamDays = new Set(["MON", "TUE", "WED", "THU", "FRI"]);
-  renderExamDaySelector();
-
+  // [수정] 요일 선택기 관련 코드 삭제
   state.examPlanLanes = { main1: [], main2: [], vocab: [] };
   renderAllExamLanes();
 
@@ -1535,16 +1509,7 @@ function renderExamMaterialOptions() {
   }
 }
 
-/** 내신 플랜 에디터의 요일 선택 버튼 UI를 렌더링합니다. */
-function renderExamDaySelector() {
-  $$("#examDaySelector button").forEach((btn) => {
-    if (state.selectedExamDays.has(btn.dataset.day)) {
-      btn.classList.add("active");
-    } else {
-      btn.classList.remove("active");
-    }
-  });
-}
+/** [수정] 내신 플랜 요일 선택기 UI 렌더링 함수 삭제 */
 
 /** 내신 플랜의 모든 교재 레인을 UI에 렌더링합니다. */
 function renderAllExamLanes() {
@@ -1612,11 +1577,11 @@ async function saveExamPlan() {
   const grade = $("#examGradeSelector").value;
   if (!school || !grade) return alert("대상 학교와 학년을 선택하세요.");
 
+  // [수정] days 속성을 제거하고 서버에서 처리하도록 함
   const planData = {
     title: `${school} ${grade}학년 내신`,
     startDate: $("#examStartDate").value,
     endDate: $("#examEndDate").value,
-    days: [...state.selectedExamDays].join(","),
     lanes: state.examPlanLanes,
   };
 
@@ -1668,5 +1633,3 @@ window.deleteExamPlan = async (examPlanId, school, grade) => {
     alert(`삭제 실패: ${e.message}`);
   }
 };
-
-// ▲▲▲ [추가] 내신 플랜 관련 함수들 ▲▲▲
