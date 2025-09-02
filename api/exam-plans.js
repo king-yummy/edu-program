@@ -1,4 +1,4 @@
-// /api/exam-plans.js — 최종 수정본 (날짜 처리 오류 해결)
+// /api/exam-plans.js — 최종 수정본 (날짜 이동 로직 수정)
 
 import { kv } from "@vercel/kv";
 import { readSheetObjects } from "../lib/sheets.js";
@@ -7,9 +7,6 @@ import { readSheetObjects } from "../lib/sheets.js";
 const DOW = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
 const toUtcDate = (dateString) => {
   if (!dateString || typeof dateString !== "string") {
-    // dateString이 유효하지 않은 경우, 오늘 날짜를 기준으로 Date 객체를 반환하거나 에러를 발생시킬 수 있습니다.
-    // 여기서는 에러를 방지하기 위해 현재 시간을 기준으로 한 Date 객체를 생성합니다.
-    // 하지만 실제로는 이 함수에 항상 유효한 문자열이 들어와야 합니다.
     return new Date(Date.UTC(1970, 0, 1));
   }
   const parts = dateString.split("T")[0].split("-");
@@ -31,6 +28,7 @@ function countClassDays(startDate, endDate, classDaysSet) {
   let count = 0;
   const start = toUtcDate(startDate);
   const end = toUtcDate(endDate);
+  if (start > end) return 0;
   for (let d = new Date(start); d <= end; d = addDays(d, 1)) {
     if (classDaysSet.has(DOW[d.getUTCDay()])) {
       count++;
@@ -39,10 +37,10 @@ function countClassDays(startDate, endDate, classDaysSet) {
   return count;
 }
 
-/** [수정] 특정 날짜로부터 N개의 수업일수만큼 뒤의 날짜를 계산하는 함수 */
+/** 특정 날짜로부터 N개의 수업일수만큼 뒤의 날짜를 계산하는 함수 */
 function shiftDateByClassDays(startDate, daysToShift, classDaysSet) {
-  // startDate는 Date 객체로 들어온다고 가정합니다.
-  let shiftedDate = new Date(startDate); // 원본 수정을 방지하기 위해 복사본 생성
+  let shiftedDate = new Date(startDate);
+  if (daysToShift <= 0) return shiftedDate;
   let daysCounted = 0;
   while (daysCounted < daysToShift) {
     shiftedDate = addDays(shiftedDate, 1);
@@ -151,16 +149,7 @@ export default async function handler(req, res) {
 
         const examStartDate = examSegmentData.startDate;
         const examEndDate = examSegmentData.endDate;
-
-        let planToModify =
-          studentPlans.find((p) =>
-            p.planSegments.some(
-              (s) => examStartDate <= s.endDate && examEndDate >= s.startDate
-            )
-          ) || studentPlans[0]; // 겹치는게 없으면 첫번째 플랜을 기준으로 삼음
-
-        const originalSegments = planToModify.planSegments;
-        const newSegments = [];
+        const examStartDateUtc = toUtcDate(examStartDate);
 
         const daysToShift = countClassDays(
           examStartDate,
@@ -168,75 +157,98 @@ export default async function handler(req, res) {
           studentClassDaysSet
         );
 
+        // 내신 기간에 수업일이 없으면 아무것도 하지 않음
+        if (daysToShift <= 0) {
+          continue;
+        }
+
+        let planToModify =
+          studentPlans.find((p) =>
+            p.planSegments.some((s) => s.endDate >= examStartDate)
+          ) || studentPlans[0];
+
+        if (!planToModify) {
+          // 적용할 플랜이 없는 경우 (예: 모든 플랜이 내신 기간보다 전에 끝남)
+          // 이 경우, 마지막 플랜에 그냥 세그먼트를 추가하거나 새 플랜을 만들 수 있음
+          // 여기서는 가장 마지막 플랜에 추가하는 것으로 처리
+          planToModify = studentPlans[studentPlans.length - 1];
+        }
+
+        const originalSegments = planToModify.planSegments;
+        const newSegments = [];
+
         for (const segment of originalSegments) {
-          if (segment.endDate < examStartDate) {
+          const segmentStartUtc = toUtcDate(segment.startDate);
+          const segmentEndUtc = toUtcDate(segment.endDate);
+
+          // Case 1: 플랜 구간이 내신 기간보다 완전히 전에 끝나는 경우 -> 변경 없음
+          if (segmentEndUtc < examStartDateUtc) {
             newSegments.push(segment);
             continue;
           }
-          if (segment.startDate > examEndDate) {
-            const newStartDate = shiftDateByClassDays(
-              toUtcDate(segment.startDate),
-              daysToShift - 1,
-              studentClassDaysSet
-            );
-            const duration = countClassDays(
-              segment.startDate,
-              segment.endDate,
-              studentClassDaysSet
-            );
-            const newEndDate = shiftDateByClassDays(
-              newStartDate,
-              duration - 1,
-              studentClassDaysSet
-            );
+
+          // Case 2: 플랜 구간이 내신 기간과 겹치는 경우 (시작일이 내신 기간 이전, 종료일은 겹치거나 이후) -> 분할
+          if (
+            segmentStartUtc < examStartDateUtc &&
+            segmentEndUtc >= examStartDateUtc
+          ) {
+            // Part A: 내신 기간 전까지의 부분 (변경 없음)
             newSegments.push({
               ...segment,
-              startDate: toYMD(newStartDate),
-              endDate: toYMD(newEndDate),
+              endDate: toYMD(addDays(examStartDateUtc, -1)),
             });
-            continue;
-          }
 
-          // 겹치는 경우 분할
-          // Before part
-          if (segment.startDate < examStartDate) {
-            newSegments.push({
-              ...segment,
-              endDate: toYMD(addDays(toUtcDate(examStartDate), -1)),
-            });
-          }
-
-          // After part
-          if (segment.endDate > examEndDate) {
-            const newAfterStart = shiftDateByClassDays(
-              toUtcDate(examEndDate),
+            // Part B: 내신 기간 시작일부터 시작되는 나머지 부분 -> 전체 기간 이동
+            const newPartB_Start = shiftDateByClassDays(
+              examStartDateUtc,
               daysToShift,
               studentClassDaysSet
             );
-            const duration = countClassDays(
-              toYMD(addDays(toUtcDate(examEndDate), 1)),
-              segment.endDate,
+            const newPartB_End = shiftDateByClassDays(
+              segmentEndUtc,
+              daysToShift,
               studentClassDaysSet
             );
-            const newAfterEnd = shiftDateByClassDays(
-              newAfterStart,
-              duration - 1,
+
+            if (newPartB_Start <= newPartB_End) {
+              newSegments.push({
+                ...segment,
+                startDate: toYMD(newPartB_Start),
+                endDate: toYMD(newPartB_End),
+              });
+            }
+            continue;
+          }
+
+          // Case 3: 플랜 구간 전체가 내신 기간 중에 시작되거나 그 이후인 경우 -> 전체 기간 이동
+          if (segmentStartUtc >= examStartDateUtc) {
+            const newSeg_Start = shiftDateByClassDays(
+              segmentStartUtc,
+              daysToShift,
+              studentClassDaysSet
+            );
+            const newSeg_End = shiftDateByClassDays(
+              segmentEndUtc,
+              daysToShift,
               studentClassDaysSet
             );
             newSegments.push({
               ...segment,
-              startDate: toYMD(newAfterStart),
-              endDate: toYMD(newAfterEnd),
+              startDate: toYMD(newSeg_Start),
+              endDate: toYMD(newSeg_End),
             });
+            continue;
           }
         }
 
+        // 새로운 내신 플랜 구간 추가
         newSegments.push({
           id: `seg_exam_${newExamPlanForRecord.id}`,
           ...examSegmentData,
         });
-        newSegments.sort((a, b) => a.startDate.localeCompare(b.startDate));
 
+        // 날짜순으로 정렬 후 저장
+        newSegments.sort((a, b) => a.startDate.localeCompare(b.startDate));
         planToModify.planSegments = newSegments;
         await kv.set(studentPlanKey, studentPlans);
       }
@@ -259,12 +271,10 @@ export default async function handler(req, res) {
     try {
       const { school, grade, examPlanId } = req.query;
       if (!school || !grade || !examPlanId) {
-        return res
-          .status(400)
-          .json({
-            ok: false,
-            error: "school, grade, examPlanId가 필요합니다.",
-          });
+        return res.status(400).json({
+          ok: false,
+          error: "school, grade, examPlanId가 필요합니다.",
+        });
       }
 
       const examPlanKey = getExamPlanKey(school, grade);
