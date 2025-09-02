@@ -1296,8 +1296,7 @@ function renderPrintable(items, ctx, targetSelector) {
             ?.title || mainItem.material_id;
         if (mainItem.isOT)
           return `<td colspan="5" style="background: #F9FF00; font-weight: bold;">"${title}" OT</td>`;
-        if (mainItem.isReturn)
-          return `<td colspan="5" style="background: #e0f2fe; font-weight: bold;">"${title}" 복귀</td>`;
+
         return `<td><span class="lecture-text">${
           mainItem.lecture_range || ""
         }</span></td><td>${
