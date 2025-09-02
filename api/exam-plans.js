@@ -1,4 +1,4 @@
-// /api/exam-plans.js — 최종 수정본 (날짜 이동 로직 수정)
+// /api/exam-plans.js — 최종 수정본 (수정 API 추가)
 
 import { kv } from "@vercel/kv";
 import { readSheetObjects } from "../lib/sheets.js";
@@ -157,7 +157,6 @@ export default async function handler(req, res) {
           studentClassDaysSet
         );
 
-        // 내신 기간에 수업일이 없으면 아무것도 하지 않음
         if (daysToShift <= 0) {
           continue;
         }
@@ -168,9 +167,6 @@ export default async function handler(req, res) {
           ) || studentPlans[0];
 
         if (!planToModify) {
-          // 적용할 플랜이 없는 경우 (예: 모든 플랜이 내신 기간보다 전에 끝남)
-          // 이 경우, 마지막 플랜에 그냥 세그먼트를 추가하거나 새 플랜을 만들 수 있음
-          // 여기서는 가장 마지막 플랜에 추가하는 것으로 처리
           planToModify = studentPlans[studentPlans.length - 1];
         }
 
@@ -181,24 +177,20 @@ export default async function handler(req, res) {
           const segmentStartUtc = toUtcDate(segment.startDate);
           const segmentEndUtc = toUtcDate(segment.endDate);
 
-          // Case 1: 플랜 구간이 내신 기간보다 완전히 전에 끝나는 경우 -> 변경 없음
           if (segmentEndUtc < examStartDateUtc) {
             newSegments.push(segment);
             continue;
           }
 
-          // Case 2: 플랜 구간이 내신 기간과 겹치는 경우 (시작일이 내신 기간 이전, 종료일은 겹치거나 이후) -> 분할
           if (
             segmentStartUtc < examStartDateUtc &&
             segmentEndUtc >= examStartDateUtc
           ) {
-            // Part A: 내신 기간 전까지의 부분 (변경 없음)
             newSegments.push({
               ...segment,
               endDate: toYMD(addDays(examStartDateUtc, -1)),
             });
 
-            // Part B: 내신 기간 시작일부터 시작되는 나머지 부분 -> 전체 기간 이동
             const newPartB_Start = shiftDateByClassDays(
               examStartDateUtc,
               daysToShift,
@@ -220,7 +212,6 @@ export default async function handler(req, res) {
             continue;
           }
 
-          // Case 3: 플랜 구간 전체가 내신 기간 중에 시작되거나 그 이후인 경우 -> 전체 기간 이동
           if (segmentStartUtc >= examStartDateUtc) {
             const newSeg_Start = shiftDateByClassDays(
               segmentStartUtc,
@@ -241,13 +232,11 @@ export default async function handler(req, res) {
           }
         }
 
-        // 새로운 내신 플랜 구간 추가
         newSegments.push({
           id: `seg_exam_${newExamPlanForRecord.id}`,
           ...examSegmentData,
         });
 
-        // 날짜순으로 정렬 후 저장
         newSegments.sort((a, b) => a.startDate.localeCompare(b.startDate));
         planToModify.planSegments = newSegments;
         await kv.set(studentPlanKey, studentPlans);
@@ -263,6 +252,49 @@ export default async function handler(req, res) {
         .json({ ok: true, newExamPlan: newExamPlanForRecord });
     } catch (e) {
       console.error("내신 플랜 생성 실패:", e);
+      return res.status(500).json({ ok: false, error: e.message });
+    }
+  }
+
+  // --- [신규] PUT: 기존 내신 플랜 수정 ---
+  if (req.method === "PUT") {
+    try {
+      const { school, grade, examPlanId, planData } = req.body;
+      if (!school || !grade || !examPlanId || !planData) {
+        return res
+          .status(400)
+          .json({
+            ok: false,
+            error: "school, grade, examPlanId, planData가 필요합니다.",
+          });
+      }
+
+      const examPlanKey = getExamPlanKey(school, grade);
+      let examPlans = (await kv.get(examPlanKey)) || [];
+
+      const planIndex = examPlans.findIndex((p) => p.id === examPlanId);
+
+      if (planIndex === -1) {
+        return res
+          .status(404)
+          .json({ ok: false, error: "수정할 내신 플랜을 찾지 못했습니다." });
+      }
+
+      // 기존 데이터에 업데이트된 데이터를 덮어씀
+      examPlans[planIndex] = {
+        ...examPlans[planIndex], // createdAt 등 기존 필드 유지
+        ...planData, // 프론트에서 보낸 새 데이터
+        id: examPlanId, // id는 변경되지 않도록 보장
+        updatedAt: new Date().toISOString(), // 수정 시각 기록
+      };
+
+      await kv.set(examPlanKey, examPlans);
+
+      return res
+        .status(200)
+        .json({ ok: true, updatedExamPlan: examPlans[planIndex] });
+    } catch (e) {
+      console.error("내신 플랜 수정 실패:", e);
       return res.status(500).json({ ok: false, error: e.message });
     }
   }
@@ -297,7 +329,7 @@ export default async function handler(req, res) {
     }
   }
 
-  res.setHeader("Allow", ["GET", "POST", "DELETE"]);
+  res.setHeader("Allow", ["GET", "POST", "PUT", "DELETE"]);
   return res
     .status(405)
     .json({ ok: false, error: `Method ${req.method} Not Allowed` });
