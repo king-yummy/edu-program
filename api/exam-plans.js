@@ -1,10 +1,10 @@
-// /api/exam-plans.js (최종 수정본)
+// /api/exam-plans.js (GPT 분석 기반 최종 수정본)
 
 import { kv } from "@vercel/kv";
 import { readSheetObjects } from "../lib/sheets.js";
 import { calculateProgress } from "../lib/schedule.js";
 
-// --- 날짜 계산 Helper 함수들 ---
+// --- 날짜 계산 Helper 함수들 (변경 없음) ---
 const DOW = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
 const toUtcDate = (d) => {
   if (!d || typeof d !== "string") return new Date(Date.UTC(1970, 0, 1));
@@ -41,7 +41,7 @@ function shiftDateByClassDays(start, shift, daysSet) {
   return shifted;
 }
 
-// --- KV 및 데이터 조회 Helper ---
+// --- KV 및 데이터 조회 Helper (변경 없음) ---
 const isKvReady = () =>
   !!(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
 const getExamPlanKey = (s, g) => `exam-plans:${encodeURIComponent(s)}:${g}`;
@@ -54,15 +54,14 @@ async function getStudentAndClassData() {
   ]);
 }
 
-/**
- * 학생의 플랜 구간 배열에서 특정 내신 플랜 구간을 삭제하고,
- * 그로 인해 분리되었던 앞/뒤 일반 플랜 구간을 다시 병합하는 함수
- */
+// --- 플랜 삭제 및 병합 로직 (변경 없음) ---
 function processSegmentsAfterDeletion(
   segments,
   oldExamPlan,
   studentScheduleDays
 ) {
+  // ▼▼▼ GPT 지적 사항 반영 ▼▼▼
+  // ID 조회 방식을 통일합니다. 이제 oldExamPlan.id는 'exam_...' 형태가 아닌 순수한 ID입니다.
   const examIdToRemove = `seg_exam_${oldExamPlan.id}`;
   const examSegmentIndex = segments.findIndex((s) => s.id === examIdToRemove);
 
@@ -169,27 +168,25 @@ export default async function handler(req, res) {
 
   try {
     const examPlanKey = getExamPlanKey(school, grade);
+    let examPlans = (await kv.get(examPlanKey)) || [];
 
-    // --- GET 요청 처리 ---
+    // --- GET ---
     if (req.method === "GET") {
-      const examPlans = (await kv.get(examPlanKey)) || [];
       return res.status(200).json({ ok: true, examPlans });
     }
 
-    // --- POST, PUT, DELETE를 위한 공통 데이터 로딩 ---
     const [allStudents, allClasses] = await getStudentAndClassData();
     const targetStudents = allStudents.filter(
       (s) => s.school === school && String(s.grade) === String(grade)
     );
 
-    if (targetStudents.length === 0 && req.method !== "GET")
+    if (targetStudents.length === 0) {
       return res
         .status(404)
         .json({ ok: false, error: "해당 학생이 없습니다." });
+    }
 
-    let examPlans = (await kv.get(examPlanKey)) || [];
-
-    // --- DELETE 요청 처리 ---
+    // --- DELETE ---
     if (req.method === "DELETE") {
       if (!examPlanId)
         return res
@@ -206,21 +203,26 @@ export default async function handler(req, res) {
       for (const student of targetStudents) {
         const studentPlanKey = getStudentPlanKey(student.id);
         const studentPlans = (await kv.get(studentPlanKey)) || [];
-        if (!studentPlans.length || !studentPlans[0].planSegments) continue;
 
-        const studentClass = allClasses.find((c) => c.id === student.class_id);
-        const classDefaultDays = studentClass?.schedule_days || "MON,WED,FRI";
-        const studentScheduleDays =
-          studentPlans[0].planSegments.find((seg) => seg.days)?.days ||
-          classDefaultDays;
+        // ▼▼▼ GPT 지적 사항 반영 ▼▼▼
+        // 학생의 모든 플랜을 순회하며 수정합니다.
+        for (const plan of studentPlans) {
+          if (!plan.planSegments) continue;
 
-        const updatedSegments = processSegmentsAfterDeletion(
-          studentPlans[0].planSegments,
-          planRecordToDelete,
-          studentScheduleDays
-        );
+          const studentClass = allClasses.find(
+            (c) => c.id === student.class_id
+          );
+          const classDefaultDays = studentClass?.schedule_days || "MON,WED,FRI";
+          const studentScheduleDays =
+            plan.planSegments.find((seg) => seg.days)?.days || classDefaultDays;
 
-        studentPlans[0].planSegments = updatedSegments;
+          const updatedSegments = processSegmentsAfterDeletion(
+            plan.planSegments,
+            planRecordToDelete,
+            studentScheduleDays
+          );
+          plan.planSegments = updatedSegments;
+        }
         await kv.set(studentPlanKey, studentPlans);
       }
 
@@ -229,126 +231,129 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
-    // --- POST, PUT을 위한 추가 데이터 로딩 ---
+    // --- POST & PUT ---
     const [mainBook, vocaBook] = await Promise.all([
       readSheetObjects("mainBook"),
       readSheetObjects("vocaBook"),
     ]);
 
-    // --- PUT 또는 POST 요청에 대한 학생 플랜 업데이트 로직 ---
     for (const student of targetStudents) {
       const studentPlanKey = getStudentPlanKey(student.id);
       let studentPlans = (await kv.get(studentPlanKey)) || [];
-      if (studentPlans.length === 0 && req.method === "PUT") continue;
 
-      const studentClass = allClasses.find((c) => c.id === student.class_id);
-      const classDefaultDays = studentClass?.schedule_days || "MON,WED,FRI";
-      const studentScheduleDays =
-        studentPlans[0]?.planSegments?.find((seg) => seg.days)?.days ||
-        classDefaultDays;
-
-      let currentSegments = studentPlans[0]?.planSegments || [];
-
-      if (req.method === "PUT") {
-        const planRecord = examPlans.find((p) => p.id === examPlanId);
-        if (!planRecord) continue;
-        currentSegments = processSegmentsAfterDeletion(
-          currentSegments,
-          planRecord,
-          studentScheduleDays
-        );
-      }
-
-      const { planData } = req.body;
-      const examRecordId =
-        req.method === "PUT" ? examPlanId : `exam_${Date.now()}`;
-      const newExamSegment = {
-        ...planData,
-        id: `seg_exam_${examRecordId}`,
-        days: studentScheduleDays,
-      };
-      const newExamStartUtc = toUtcDate(newExamSegment.startDate);
-      const segmentsToInsertInto = [...currentSegments];
-      currentSegments = [];
-
-      for (const seg of segmentsToInsertInto) {
-        const segStartUtc = toUtcDate(seg.startDate);
-        const segEndUtc = toUtcDate(seg.endDate);
-
-        if (segEndUtc < newExamStartUtc) {
-          currentSegments.push(seg);
-          continue;
-        }
-        if (segStartUtc >= newExamStartUtc) {
-          currentSegments.push(seg);
-          continue;
-        }
-
-        const partA = { ...seg, endDate: toYMD(addDays(newExamStartUtc, -1)) };
-        if (toUtcDate(partA.startDate) <= toUtcDate(partA.endDate)) {
-          currentSegments.push(partA);
-        }
-
-        const progressItems = await calculateProgress(
-          { ...partA, days: seg.days || studentScheduleDays },
-          { mainBook, vocaBook }
-        );
-        const lastUnits = progressItems.reduce((acc, item) => {
-          if (item.instanceId) acc[item.instanceId] = item.unit_code;
-          return acc;
-        }, {});
-
-        const partB_lanes = JSON.parse(JSON.stringify(seg.lanes));
-        const allBookUnits = [...mainBook, ...vocaBook];
-
-        for (const lane in partB_lanes) {
-          partB_lanes[lane] = partB_lanes[lane]
-            .map((book) => {
-              const lastUnitCode = lastUnits[book.instanceId];
-              if (!lastUnitCode) return book;
-              const bookUnits = allBookUnits
-                .filter((u) => u.material_id === book.materialId)
-                .sort((a, b) => Number(a.order) - Number(b.order));
-              const lastUnitIdx = bookUnits.findIndex(
-                (u) => u.unit_code === lastUnitCode
-              );
-              if (lastUnitIdx > -1 && lastUnitIdx + 1 < bookUnits.length) {
-                return {
-                  ...book,
-                  startUnitCode: bookUnits[lastUnitIdx + 1].unit_code,
-                };
-              }
-              return null;
-            })
-            .filter(Boolean);
-        }
-
-        const partB = {
-          ...seg,
-          startDate: toYMD(addDays(toUtcDate(newExamSegment.endDate), 1)),
-          lanes: partB_lanes,
-        };
-        if (toUtcDate(partB.startDate) <= toUtcDate(partB.endDate)) {
-          currentSegments.push(partB);
-        }
-      }
-      currentSegments.push(newExamSegment);
-      currentSegments.sort((a, b) => a.startDate.localeCompare(b.startDate));
-
-      if (studentPlans.length > 0) {
-        studentPlans[0].planSegments = currentSegments;
-      } else {
+      // ▼▼▼ GPT 지적 사항 반영 ▼▼▼
+      // 학생의 모든 플랜을 순회하며 수정합니다. (첫번째 플랜이 없을 경우 새로 생성)
+      if (studentPlans.length === 0) {
         studentPlans.push({
-          planId: `pln_${student.id}`,
+          planId: `pln_${student.id}_${Date.now()}`,
           studentId: student.id,
-          planSegments: currentSegments,
+          planSegments: [],
           userSkips: {},
         });
+      }
+
+      for (const plan of studentPlans) {
+        const studentClass = allClasses.find((c) => c.id === student.class_id);
+        const classDefaultDays = studentClass?.schedule_days || "MON,WED,FRI";
+        const studentScheduleDays =
+          plan.planSegments?.find((seg) => seg.days)?.days || classDefaultDays;
+        let currentSegments = plan.planSegments || [];
+
+        if (req.method === "PUT") {
+          const planRecord = examPlans.find((p) => p.id === examPlanId);
+          if (planRecord) {
+            currentSegments = processSegmentsAfterDeletion(
+              currentSegments,
+              planRecord,
+              studentScheduleDays
+            );
+          }
+        }
+
+        const { planData } = req.body;
+        // ▼▼▼ GPT 지적 사항 반영 ▼▼▼
+        // ID 생성 방식을 'exam_' 접두사 없이 순수하게 만듭니다.
+        const examRecordId =
+          req.method === "PUT" ? examPlanId : `exam_${Date.now()}`;
+
+        // 세그먼트 ID를 'seg_exam_' + 순수 ID 조합으로 만듭니다.
+        const newExamSegment = {
+          ...planData,
+          id: `seg_exam_${examRecordId}`,
+          days: studentScheduleDays,
+        };
+
+        const newExamStartUtc = toUtcDate(newExamSegment.startDate);
+        const segmentsToInsertInto = [...currentSegments];
+        currentSegments = [];
+
+        for (const seg of segmentsToInsertInto) {
+          const segStartUtc = toUtcDate(seg.startDate);
+          const segEndUtc = toUtcDate(seg.endDate);
+
+          if (segEndUtc < newExamStartUtc || segStartUtc >= newExamStartUtc) {
+            currentSegments.push(seg);
+            continue;
+          }
+
+          const partA = {
+            ...seg,
+            endDate: toYMD(addDays(newExamStartUtc, -1)),
+          };
+          if (toUtcDate(partA.startDate) <= toUtcDate(partA.endDate)) {
+            currentSegments.push(partA);
+          }
+
+          const progressItems = await calculateProgress(
+            { ...partA, days: seg.days || studentScheduleDays },
+            { mainBook, vocaBook }
+          );
+          const lastUnits = progressItems.reduce((acc, item) => {
+            if (item.instanceId) acc[item.instanceId] = item.unit_code;
+            return acc;
+          }, {});
+
+          const partB_lanes = JSON.parse(JSON.stringify(seg.lanes));
+          const allBookUnits = [...mainBook, ...vocaBook];
+
+          for (const lane in partB_lanes) {
+            partB_lanes[lane] = partB_lanes[lane]
+              .map((book) => {
+                const lastUnitCode = lastUnits[book.instanceId];
+                if (!lastUnitCode) return book;
+                const bookUnits = allBookUnits
+                  .filter((u) => u.material_id === book.materialId)
+                  .sort((a, b) => Number(a.order) - Number(b.order));
+                const lastUnitIdx = bookUnits.findIndex(
+                  (u) => u.unit_code === lastUnitCode
+                );
+                if (lastUnitIdx > -1 && lastUnitIdx + 1 < bookUnits.length) {
+                  return {
+                    ...book,
+                    startUnitCode: bookUnits[lastUnitIdx + 1].unit_code,
+                  };
+                }
+                return null;
+              })
+              .filter(Boolean);
+          }
+
+          const partB = {
+            ...seg,
+            startDate: toYMD(addDays(toUtcDate(newExamSegment.endDate), 1)),
+            lanes: partB_lanes,
+          };
+          if (toUtcDate(partB.startDate) <= toUtcDate(partB.endDate)) {
+            currentSegments.push(partB);
+          }
+        }
+        currentSegments.push(newExamSegment);
+        currentSegments.sort((a, b) => a.startDate.localeCompare(b.startDate));
+        plan.planSegments = currentSegments;
       }
       await kv.set(studentPlanKey, studentPlans);
     }
 
-    // --- 마스터 내신 플랜 목록 업데이트 ---
     if (req.method === "POST") {
       const { planData } = req.body;
       const examRecordId = `exam_${Date.now()}`;
@@ -359,11 +364,14 @@ export default async function handler(req, res) {
     if (req.method === "PUT") {
       const { planData } = req.body;
       const planIndex = examPlans.findIndex((p) => p.id === examPlanId);
-      examPlans[planIndex] = {
-        ...examPlans[planIndex],
-        ...planData,
-        updatedAt: new Date().toISOString(),
-      };
+      if (planIndex > -1) {
+        examPlans[planIndex] = {
+          ...examPlans[planIndex],
+          ...planData,
+          id: examPlanId,
+          updatedAt: new Date().toISOString(),
+        };
+      }
       await kv.set(examPlanKey, examPlans);
       return res.status(200).json({ ok: true });
     }
