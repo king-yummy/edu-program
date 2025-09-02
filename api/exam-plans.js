@@ -54,14 +54,14 @@ async function getStudentAndClassData() {
   ]);
 }
 
-// --- 플랜 삭제 및 병합 로직 (변경 없음) ---
+// --- 플랜 삭제 및 병합 로직 ---
 function processSegmentsAfterDeletion(
   segments,
   oldExamPlan,
   studentScheduleDays
 ) {
-  // ▼▼▼ GPT 지적 사항 반영 ▼▼▼
-  // ID 조회 방식을 통일합니다. 이제 oldExamPlan.id는 'exam_...' 형태가 아닌 순수한 ID입니다.
+  // ▼▼▼ ID 조회 방식 수정 ▼▼▼
+  // 이제 oldExamPlan.id는 'exam_...' 접두사가 없는 순수한 ID입니다.
   const examIdToRemove = `seg_exam_${oldExamPlan.id}`;
   const examSegmentIndex = segments.findIndex((s) => s.id === examIdToRemove);
 
@@ -70,10 +70,8 @@ function processSegmentsAfterDeletion(
   }
 
   const finalSegments = [...segments];
-
   const prevSegmentIndex = examSegmentIndex - 1;
   const nextSegmentIndex = examSegmentIndex + 1;
-
   const prevSegment =
     prevSegmentIndex >= 0 ? finalSegments[prevSegmentIndex] : null;
   const nextSegment =
@@ -94,7 +92,6 @@ function processSegmentsAfterDeletion(
       .flat()
       .map((b) => b.instanceId)
       .sort();
-
     if (daysMatch && JSON.stringify(prevBooks) === JSON.stringify(nextBooks)) {
       canMerge = true;
     }
@@ -107,18 +104,14 @@ function processSegmentsAfterDeletion(
         const nextBook = nextSegment.lanes?.[lane]?.find(
           (b) => b.instanceId === book.instanceId
         );
-        if (nextBook) {
-          book.endUnitCode = nextBook.endUnitCode;
-        }
+        if (nextBook) book.endUnitCode = nextBook.endUnitCode;
       });
     }
-
     const mergedSegment = {
       ...prevSegment,
       endDate: nextSegment.endDate,
       lanes: mergedLanes,
     };
-
     finalSegments.splice(prevSegmentIndex, 3, mergedSegment);
   } else {
     finalSegments.splice(examSegmentIndex, 1);
@@ -132,7 +125,6 @@ function processSegmentsAfterDeletion(
     )
   );
   const oldExamEndUtc = toUtcDate(oldExamPlan.endDate);
-
   return finalSegments.map((seg) => {
     if (toUtcDate(seg.startDate) > oldExamEndUtc) {
       const segDaysSet = new Set((seg.days || studentScheduleDays).split(","));
@@ -170,7 +162,6 @@ export default async function handler(req, res) {
     const examPlanKey = getExamPlanKey(school, grade);
     let examPlans = (await kv.get(examPlanKey)) || [];
 
-    // --- GET ---
     if (req.method === "GET") {
       return res.status(200).json({ ok: true, examPlans });
     }
@@ -186,7 +177,6 @@ export default async function handler(req, res) {
         .json({ ok: false, error: "해당 학생이 없습니다." });
     }
 
-    // --- DELETE ---
     if (req.method === "DELETE") {
       if (!examPlanId)
         return res
@@ -204,11 +194,9 @@ export default async function handler(req, res) {
         const studentPlanKey = getStudentPlanKey(student.id);
         const studentPlans = (await kv.get(studentPlanKey)) || [];
 
-        // ▼▼▼ GPT 지적 사항 반영 ▼▼▼
-        // 학생의 모든 플랜을 순회하며 수정합니다.
+        // ▼▼▼ GPT 지적 사항 반영: 학생의 모든 플랜을 순회하며 수정합니다. ▼▼▼
         for (const plan of studentPlans) {
           if (!plan.planSegments) continue;
-
           const studentClass = allClasses.find(
             (c) => c.id === student.class_id
           );
@@ -216,12 +204,11 @@ export default async function handler(req, res) {
           const studentScheduleDays =
             plan.planSegments.find((seg) => seg.days)?.days || classDefaultDays;
 
-          const updatedSegments = processSegmentsAfterDeletion(
+          plan.planSegments = processSegmentsAfterDeletion(
             plan.planSegments,
             planRecordToDelete,
             studentScheduleDays
           );
-          plan.planSegments = updatedSegments;
         }
         await kv.set(studentPlanKey, studentPlans);
       }
@@ -237,12 +224,15 @@ export default async function handler(req, res) {
       readSheetObjects("vocaBook"),
     ]);
 
+    // ▼▼▼ GPT 지적 사항 반영: ID 생성 방식을 통일합니다. ▼▼▼
+    const isUpdate = req.method === "PUT";
+    const newExamPlanId = isUpdate ? examPlanId : `exam_${Date.now()}`;
+    const { planData } = req.body;
+
     for (const student of targetStudents) {
       const studentPlanKey = getStudentPlanKey(student.id);
       let studentPlans = (await kv.get(studentPlanKey)) || [];
 
-      // ▼▼▼ GPT 지적 사항 반영 ▼▼▼
-      // 학생의 모든 플랜을 순회하며 수정합니다. (첫번째 플랜이 없을 경우 새로 생성)
       if (studentPlans.length === 0) {
         studentPlans.push({
           planId: `pln_${student.id}_${Date.now()}`,
@@ -252,6 +242,7 @@ export default async function handler(req, res) {
         });
       }
 
+      // ▼▼▼ GPT 지적 사항 반영: 학생의 모든 플랜을 순회하며 수정합니다. ▼▼▼
       for (const plan of studentPlans) {
         const studentClass = allClasses.find((c) => c.id === student.class_id);
         const classDefaultDays = studentClass?.schedule_days || "MON,WED,FRI";
@@ -259,7 +250,7 @@ export default async function handler(req, res) {
           plan.planSegments?.find((seg) => seg.days)?.days || classDefaultDays;
         let currentSegments = plan.planSegments || [];
 
-        if (req.method === "PUT") {
+        if (isUpdate) {
           const planRecord = examPlans.find((p) => p.id === examPlanId);
           if (planRecord) {
             currentSegments = processSegmentsAfterDeletion(
@@ -270,16 +261,9 @@ export default async function handler(req, res) {
           }
         }
 
-        const { planData } = req.body;
-        // ▼▼▼ GPT 지적 사항 반영 ▼▼▼
-        // ID 생성 방식을 'exam_' 접두사 없이 순수하게 만듭니다.
-        const examRecordId =
-          req.method === "PUT" ? examPlanId : `exam_${Date.now()}`;
-
-        // 세그먼트 ID를 'seg_exam_' + 순수 ID 조합으로 만듭니다.
         const newExamSegment = {
           ...planData,
-          id: `seg_exam_${examRecordId}`,
+          id: `seg_${newExamPlanId}`, // "seg_exam_..."가 아닌 "seg_..." + ID 형식
           days: studentScheduleDays,
         };
 
@@ -354,15 +338,7 @@ export default async function handler(req, res) {
       await kv.set(studentPlanKey, studentPlans);
     }
 
-    if (req.method === "POST") {
-      const { planData } = req.body;
-      const examRecordId = `exam_${Date.now()}`;
-      examPlans.push({ ...planData, id: examRecordId });
-      await kv.set(examPlanKey, examPlans);
-      return res.status(201).json({ ok: true });
-    }
-    if (req.method === "PUT") {
-      const { planData } = req.body;
+    if (isUpdate) {
       const planIndex = examPlans.findIndex((p) => p.id === examPlanId);
       if (planIndex > -1) {
         examPlans[planIndex] = {
@@ -372,16 +348,13 @@ export default async function handler(req, res) {
           updatedAt: new Date().toISOString(),
         };
       }
-      await kv.set(examPlanKey, examPlans);
-      return res.status(200).json({ ok: true });
+    } else {
+      examPlans.push({ ...planData, id: newExamPlanId });
     }
+    await kv.set(examPlanKey, examPlans);
+    return res.status(isUpdate ? 200 : 201).json({ ok: true });
   } catch (e) {
     console.error(`[${req.method}] /api/exam-plans Error:`, e);
     return res.status(500).json({ ok: false, error: e.message });
   }
-
-  res.setHeader("Allow", ["GET", "POST", "PUT", "DELETE"]);
-  return res
-    .status(405)
-    .json({ ok: false, error: `Method ${req.method} Not Allowed` });
 }
