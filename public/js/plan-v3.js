@@ -1,4 +1,4 @@
-// /public/js/plan-v3.js — 최종 수정본 (내신 플랜 자동 미리보기 적용)
+// /public/js/plan-v3.js — 최종 수정본 (내신 플랜 미리보기 패널 분리 적용)
 
 const $ = (q) => document.querySelector(q);
 const $$ = (q) => document.querySelectorAll(q);
@@ -93,7 +93,8 @@ const triggerPreview = debounce(async () => {
       studentNames: [state.selectedStudent.name],
       startDate: finalStartDate,
       endDate: finalEndDate,
-    }
+    },
+    "#result" // 일반 플랜 미리보기는 #result에 렌더링
   );
 }, 500);
 
@@ -205,10 +206,8 @@ function attachEventListeners() {
   $("#btnAddNewExamPlan").onclick = showExamPlanEditorForNewPlan;
   $("#btnAddExamBook").onclick = addBookToExamLane;
   $("#btnSaveExamPlan").onclick = saveExamPlan;
-  // ▼▼▼ [수정] 내신 플랜 에디터의 날짜 변경 시 자동 미리보기 실행 ▼▼▼
   $("#examStartDate").onchange = triggerExamPreview;
   $("#examEndDate").onchange = triggerExamPreview;
-  // ▲▲▲ [수정] 내신 플랜 에디터의 날짜 변경 시 자동 미리보기 실행 ▲▲▲
 }
 
 function renderDaySelector() {
@@ -1201,16 +1200,19 @@ function deleteSkip() {
   triggerPreview();
 }
 
-function renderPrintable(items, ctx) {
+function renderPrintable(items, ctx, targetSelector) {
   const dates = [...new Set(items.map((i) => i.date))].sort();
   const studentHeader = `<div class="student-header">${ctx.studentNames.join(
     ", "
   )} / ${ctx.startDate} ~ ${ctx.endDate}</div>`;
-  const instructionText = `
+  const instructionText =
+    targetSelector === "#result"
+      ? `
     <div class="muted small print-hide" style="margin-bottom: 12px; padding: 8px; background: #f8fafc; border-radius: 8px;">
       <b>💡 사용법:</b> 날짜를 그냥 클릭하면 <b>결석 처리</b>, <code>Ctrl</code> 또는 <code>Cmd</code>를 누른 채로 클릭하면 <b>기간 선택(교재 삽입용)</b>이 됩니다.
     </div>
-  `;
+  `
+      : "";
   const usedMainMaterialIds = [
     ...new Set(
       items
@@ -1247,7 +1249,10 @@ function renderPrintable(items, ctx) {
       const dateObj = new Date(d + "T00:00:00Z");
       const dayName = DOW_KR[dateObj.getUTCDay()];
       const dateString = `${d.slice(5).replace(/-/g, ".")} (${dayName})`;
-      const tag = `data-date="${d}" onclick="handleDateClick(event, '${d}')" style="cursor:pointer;"`;
+      const tag =
+        targetSelector === "#result"
+          ? `data-date="${d}" onclick="handleDateClick(event, '${d}')" style="cursor:pointer;"`
+          : `data-date="${d}"`;
       const m1 = dayItems.find(
         (x) => x.source === "main" && x.lane === "main1"
       );
@@ -1304,10 +1309,13 @@ function renderPrintable(items, ctx) {
               </tr>`;
     })
     .join("");
-  $(
-    "#result"
-  ).innerHTML = `${studentHeader}${instructionText}${materialsHeaderHtml}<table class="table">${thead}<tbody>${rows}</tbody></table>`;
-  updateSelectionUI();
+  const targetElement = $(targetSelector);
+  if (targetElement) {
+    targetElement.innerHTML = `${studentHeader}${instructionText}${materialsHeaderHtml}<table class="table">${thead}<tbody>${rows}</tbody></table>`;
+  }
+  if (targetSelector === "#result") {
+    updateSelectionUI();
+  }
 }
 
 function prepareAndPrint() {
@@ -1369,7 +1377,7 @@ async function onExamSchoolOrGradeChange() {
   actionsEl.style.display = "none";
   editorEl.style.display = "none";
   $("#existingExamPlans").innerHTML = "";
-  $("#result").innerHTML = "왼쪽에서 학생을 선택하고 플랜을 설정해주세요."; // 미리보기 초기화
+  $("#examResult").innerHTML = "대상을 선택하고 플랜을 설정해주세요."; // 내신 미리보기 초기화
 
   if (!school || !grade) return;
 
@@ -1573,7 +1581,6 @@ window.removeBookFromExamLane = (lane, instanceId) => {
   triggerExamPreview(); // 교재 삭제 시 자동 미리보기
 };
 
-// ▼▼▼ [수정] 미리보기 함수를 debounce로 감싸서 성능 최적화 ▼▼▼
 const triggerExamPreview = debounce(async () => {
   const school = $("#examSchoolSelector").value;
   const grade = $("#examGradeSelector").value;
@@ -1584,7 +1591,7 @@ const triggerExamPreview = debounce(async () => {
   );
   if (targetStudents.length === 0) {
     $(
-      "#result"
+      "#examResult"
     ).innerHTML = `<div class="muted" style="padding:16px;">미리보기를 할 학생이 없습니다.</div>`;
     return;
   }
@@ -1599,7 +1606,7 @@ const triggerExamPreview = debounce(async () => {
   const endDate = $("#examEndDate").value;
   if (!startDate || !endDate || startDate > endDate) {
     $(
-      "#result"
+      "#examResult"
     ).innerHTML = `<div class="muted" style="padding:16px;">올바른 기간을 선택하세요.</div>`;
     return;
   }
@@ -1633,7 +1640,7 @@ const triggerExamPreview = debounce(async () => {
   };
 
   try {
-    $("#result").innerHTML = "내신 플랜 미리보기를 생성 중입니다...";
+    $("#examResult").innerHTML = "내신 플랜 미리보기를 생성 중입니다...";
     const res = await api("/api/plan", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1641,18 +1648,22 @@ const triggerExamPreview = debounce(async () => {
     });
     if (!res.ok) throw new Error(res.error);
 
-    renderPrintable(res.items, {
-      studentNames: [
-        `${school} ${grade}학년 (대표 학생: ${representativeStudent.name})`,
-      ],
-      startDate,
-      endDate,
-    });
+    // [수정] 내신 플랜 미리보기는 #examResult에 렌더링
+    renderPrintable(
+      res.items,
+      {
+        studentNames: [
+          `${school} ${grade}학년 (대표 학생: ${representativeStudent.name})`,
+        ],
+        startDate,
+        endDate,
+      },
+      "#examResult"
+    );
   } catch (e) {
-    $("#result").textContent = `미리보기 생성 실패: ${e.message}`;
+    $("#examResult").textContent = `미리보기 생성 실패: ${e.message}`;
   }
 }, 500);
-// ▲▲▲ [수정] 미리보기 함수를 debounce로 감싸서 성능 최적화 ▲▲▲
 
 /** 내신 플랜을 서버에 저장합니다. */
 async function saveExamPlan() {
