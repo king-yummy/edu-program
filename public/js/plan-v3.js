@@ -1,4 +1,4 @@
-// /public/js/plan-v3.js — 최종 수정본
+// /public/js/plan-v3.js — 최종 수정본 (내신 플랜 기능 추가)
 
 const $ = (q) => document.querySelector(q);
 const $$ = (q) => document.querySelectorAll(q);
@@ -23,6 +23,7 @@ const debounce = (func, delay) => {
   };
 };
 
+// --- state 객체에 내신 플랜 관련 상태 추가 ---
 const state = {
   allStudents: [],
   allMaterials: [],
@@ -39,9 +40,13 @@ const state = {
   insertionSegmentId: null,
   selectedDays: new Set(),
   currentEventMonth: new Date(),
+  // ▼▼▼ [추가] 내신 플랜 관련 상태 ▼▼▼
+  examPlans: [],
+  examPlanLanes: { main1: [], main2: [], vocab: [] },
+  selectedExamDays: new Set(["MON", "TUE", "WED", "THU", "FRI"]), // 기본값 월-금
+  editingExamPlanId: null,
+  // ▲▲▲ [추가] 내신 플랜 관련 상태 ▲▲▲
 };
-
-// --- (이 아래부터 boot() 함수 전까지 기존 코드와 동일) ---
 
 const triggerPreview = debounce(async () => {
   if (!state.selectedStudent) return;
@@ -135,9 +140,12 @@ async function boot() {
     renderEvents();
     attachEventListeners();
     attachModalEventListeners();
-    // [수정] 초기 렌더링 호출
     renderScopedEventInputs("event");
     renderScopedEventInputs("supplementary");
+    // ▼▼▼ [추가] 내신 플랜 관련 초기화 함수 호출 ▼▼▼
+    renderExamSchoolAndGradeSelectors();
+    renderExamMaterialOptions();
+    // ▲▲▲ [추가] 내신 플랜 관련 초기화 함수 호출 ▲▲▲
   } catch (e) {
     console.error("초기화 실패:", e);
     alert(`페이지를 불러오는 데 실패했습니다: ${e.message}`);
@@ -145,7 +153,6 @@ async function boot() {
 }
 
 function attachEventListeners() {
-  // ▼▼▼ [수정] 이벤트 리스너 변경 및 추가 ▼▼▼
   $("#btnAddEvent").onclick = () => addEventOrSup("event");
   $("#btnAddSupplementary").onclick = () => addEventOrSup("supplementary");
 
@@ -184,7 +191,6 @@ function attachEventListeners() {
 
   $("#eventScope").onchange = () => renderScopedEventInputs("event");
   $("#supScope").onchange = () => renderScopedEventInputs("supplementary");
-  // ▲▲▲ [수정] 이벤트 리스너 변경 및 추가 ▲▲▲
 
   $$("#daySelector button").forEach((btn) => {
     btn.onclick = () => {
@@ -198,6 +204,32 @@ function attachEventListeners() {
       updatePlanSegmentDetails();
     };
   });
+
+  // ▼▼▼ [추가] 내신 플랜 관련 이벤트 리스너 ▼▼▼
+  $("#examPlanHeader").onclick = () => {
+    $("#examPlanHeader").classList.toggle("active");
+    const content = $("#examPlanContent");
+    content.style.display =
+      content.style.display === "block" ? "none" : "block";
+  };
+  $("#examSchoolSelector").onchange = onExamSchoolOrGradeChange;
+  $("#examGradeSelector").onchange = onExamSchoolOrGradeChange;
+  $("#btnAddNewExamPlan").onclick = showExamPlanEditorForNewPlan;
+  $("#btnAddExamBook").onclick = addBookToExamLane;
+  $("#btnSaveExamPlan").onclick = saveExamPlan;
+
+  $$("#examDaySelector button").forEach((btn) => {
+    btn.onclick = () => {
+      const day = btn.dataset.day;
+      if (state.selectedExamDays.has(day)) {
+        state.selectedExamDays.delete(day);
+      } else {
+        state.selectedExamDays.add(day);
+      }
+      renderExamDaySelector();
+    };
+  });
+  // ▲▲▲ [추가] 내신 플랜 관련 이벤트 리스너 ▲▲▲
 }
 
 function renderDaySelector() {
@@ -210,7 +242,6 @@ function renderDaySelector() {
   });
 }
 
-// ▼▼▼ [수정] renderEvents 함수 수정 ▼▼▼
 function renderEvents() {
   const year = state.currentEventMonth.getFullYear();
   const month = state.currentEventMonth.getMonth() + 1;
@@ -250,9 +281,7 @@ function renderEvents() {
     })
     .join("");
 }
-// ▲▲▲ [수정] renderEvents 함수 수정 ▲▲▲
 
-// ▼▼▼ [수정] addEventOrSup 함수 내부 오류 수정 ▼▼▼
 async function addEventOrSup(type) {
   const isSup = type === "supplementary";
   const prefix = isSup ? "sup" : "event";
@@ -265,12 +294,9 @@ async function addEventOrSup(type) {
     : document.querySelector('input[name="applyTo"]:checked').value;
 
   let scopeValue = "";
-  // [오류 수정] ID 셀렉터를 정확하게 지정하도록 수정했습니다.
   const container = $(
     isSup ? "#supScopedValueContainer" : "#scopedValueContainer"
   );
-
-  // 이제 container가 null이 아니므로 아래 코드가 정상적으로 실행됩니다.
   const inputs = container.querySelectorAll("select, input");
 
   if (scope === "school_grade" && inputs.length === 2) {
@@ -301,7 +327,6 @@ async function addEventOrSup(type) {
     alert(`추가 실패: ${e.message}`);
   }
 }
-// ▲▲▲ [수정] addEventOrSup 함수 내부 오류 수정 ▲▲▲
 
 async function deleteEvent(eventId) {
   if (!confirm("정말 이 이벤트를 삭제하시겠습니까?")) return;
@@ -316,18 +341,15 @@ async function deleteEvent(eventId) {
 }
 window.deleteEvent = deleteEvent;
 
-// ▼▼▼ [수정] renderScopedEventInputs 함수 수정 ▼▼▼
 function renderScopedEventInputs(type) {
   const isSup = type === "supplementary";
   const prefix = isSup ? "sup" : "event";
 
   const scope = $(`#${prefix}Scope`).value;
-  // [오류 수정] ID 셀렉터를 정확하게 지정하도록 수정했습니다.
   const container = $(
     isSup ? "#supScopedValueContainer" : "#scopedValueContainer"
   );
 
-  // 이제 container가 null이 아니므로 아래 코드가 정상적으로 실행됩니다.
   container.innerHTML = "";
 
   if (scope === "all") return;
@@ -409,9 +431,7 @@ function renderScopedEventInputs(type) {
     };
   }
 }
-// ▲▲▲ [수정] renderScopedEventInputs 함수 수정 ▲▲▲
 
-// --- (이 아래부터는 기존 코드와 동일) ---
 function renderStudentList(searchTerm = "") {
   const filtered = searchTerm
     ? state.allStudents.filter((s) =>
@@ -683,12 +703,6 @@ function mergeAdjacentSegments() {
   }
   merged.push(current);
   state.planSegments = merged;
-}
-
-function getNextDay(dateStr) {
-  const date = new Date(dateStr);
-  date.setUTCDate(date.getUTCDate() + 1);
-  return date.toISOString().slice(0, 10);
 }
 
 function renderMaterialOptions() {
@@ -1004,6 +1018,12 @@ async function getPlanItems(startDate, endDate, segment) {
 function getPreviousDay(dateStr) {
   const date = new Date(dateStr);
   date.setUTCDate(date.getUTCDate() - 1);
+  return date.toISOString().slice(0, 10);
+}
+
+function getNextDay(dateStr) {
+  const date = new Date(dateStr);
+  date.setUTCDate(date.getUTCDate() + 1);
   return date.toISOString().slice(0, 10);
 }
 
@@ -1324,3 +1344,329 @@ function prepareAndPrint() {
   });
   window.print();
 }
+
+// ▼▼▼ [추가] 내신 플랜 관련 함수들 ▼▼▼
+
+/** 내신 플랜 섹션의 학교/학년 드롭다운을 렌더링합니다. */
+function renderExamSchoolAndGradeSelectors() {
+  const schoolSelector = $("#examSchoolSelector");
+  const gradeSelector = $("#examGradeSelector");
+
+  const schools = [
+    ...new Set(state.allStudents.map((s) => s.school).filter(Boolean)),
+  ].sort();
+  schoolSelector.innerHTML =
+    `<option value="">학교 선택</option>` +
+    schools.map((s) => `<option value="${s}">${s}</option>`).join("");
+
+  schoolSelector.onchange = () => {
+    const selectedSchool = schoolSelector.value;
+    if (!selectedSchool) {
+      gradeSelector.innerHTML = `<option value="">학년 선택</option>`;
+      $("#examPlanActions").style.display = "none";
+      $("#examPlanEditor").style.display = "none";
+      return;
+    }
+    const grades = [
+      ...new Set(
+        state.allStudents
+          .filter((s) => s.school === selectedSchool)
+          .map((s) => String(s.grade))
+          .filter(Boolean)
+      ),
+    ].sort();
+    gradeSelector.innerHTML =
+      `<option value="">학년 선택</option>` +
+      grades.map((g) => `<option value="${g}">${g}학년</option>`).join("");
+    onExamSchoolOrGradeChange();
+  };
+}
+
+/** 학교 또는 학년 선택이 변경되었을 때 내신 플랜 목록을 불러옵니다. */
+async function onExamSchoolOrGradeChange() {
+  const school = $("#examSchoolSelector").value;
+  const grade = $("#examGradeSelector").value;
+  const actionsEl = $("#examPlanActions");
+  const editorEl = $("#examPlanEditor");
+
+  actionsEl.style.display = "none";
+  editorEl.style.display = "none";
+  $("#existingExamPlans").innerHTML = "";
+
+  if (!school || !grade) return;
+
+  actionsEl.style.display = "block";
+  try {
+    const res = await api(
+      `/api/exam-plans?school=${encodeURIComponent(school)}&grade=${grade}`
+    );
+    state.examPlans = res.examPlans || [];
+    renderExistingExamPlans();
+  } catch (e) {
+    alert(`내신 플랜 조회 실패: ${e.message}`);
+    state.examPlans = [];
+    renderExistingExamPlans();
+  }
+}
+
+/** 불러온 내신 플랜 목록을 UI에 렌더링합니다. */
+function renderExistingExamPlans() {
+  const school = $("#examSchoolSelector").value;
+  const grade = $("#examGradeSelector").value;
+  const listEl = $("#existingExamPlans");
+
+  if (!state.examPlans.length) {
+    listEl.innerHTML = `<div class="muted" style="padding:10px;">저장된 내신 플랜이 없습니다.</div>`;
+    return;
+  }
+  listEl.innerHTML = state.examPlans
+    .map(
+      (p) => `
+        <div class="plan-list-item">
+            <span><strong>${p.title || "내신 플랜"}</strong> (${
+        p.startDate
+      } ~ ${p.endDate})</span>
+            <div>
+                <button class="btn-xs" style="background:#ef4444" onclick="deleteExamPlan('${
+                  p.id
+                }', '${school}', '${grade}')">삭제</button>
+            </div>
+        </div>`
+    )
+    .join("");
+}
+
+/** 새 내신 플랜 만들기 에디터를 표시합니다. */
+function showExamPlanEditorForNewPlan() {
+  state.editingExamPlanId = null;
+  const today = new Date().toISOString().slice(0, 10);
+  $("#examStartDate").value = today;
+  $("#examEndDate").value = today;
+
+  state.selectedExamDays = new Set(["MON", "TUE", "WED", "THU", "FRI"]);
+  renderExamDaySelector();
+
+  state.examPlanLanes = { main1: [], main2: [], vocab: [] };
+  renderAllExamLanes();
+
+  $("#examPlanActions").style.display = "none";
+  $("#examPlanEditor").style.display = "block";
+  $("#btnSaveExamPlan").textContent = "새 내신 플랜 저장";
+}
+
+/** 내신 플랜 교재 추가 UI의 카테고리/교재 목록을 렌더링합니다. */
+function renderExamMaterialOptions() {
+  const selCat = $("#examSelMaterialCategory");
+  const selSubCat = $("#examSelMaterialSubCategory");
+  const selMat = $("#examSelMaterial");
+
+  const uncategorized = state.allMaterials.filter((m) => !m.category);
+  const categories = [
+    ...new Set(
+      state.allMaterials.filter((m) => m.category).map((m) => m.category)
+    ),
+  ];
+  let catOptions = categories.map((c) => `<option value="${c}">${c}</option>`);
+  if (uncategorized.length > 0) {
+    catOptions.unshift(
+      `<option value="--uncategorized--">(미분류 교재)</option>`
+    );
+  }
+  selCat.innerHTML = catOptions.join("");
+
+  selCat.onchange = () => {
+    const selectedCategory = selCat.value;
+    if (selectedCategory === "--uncategorized--") {
+      selSubCat.style.display = "none";
+      selMat.innerHTML = uncategorized
+        .map((m) => `<option value="${m.material_id}">${m.title}</option>`)
+        .join("");
+    } else {
+      selSubCat.style.display = "block";
+      const materialsInCategory = state.allMaterials.filter(
+        (m) => m.category === selectedCategory
+      );
+      const subcategories = [
+        ...new Set(
+          materialsInCategory
+            .filter((m) => m.subcategory)
+            .map((m) => m.subcategory)
+        ),
+      ];
+      const noSubcategory = materialsInCategory.filter((m) => !m.subcategory);
+      let subCatOptions = subcategories.map(
+        (sc) => `<option value="${sc}">${sc}</option>`
+      );
+      if (noSubcategory.length > 0) {
+        subCatOptions.unshift(
+          `<option value="--direct--">(바로 선택)</option>`
+        );
+      }
+      selSubCat.innerHTML = subCatOptions.join("");
+      selSubCat.onchange();
+    }
+  };
+
+  selSubCat.onchange = () => {
+    const selectedCategory = selCat.value;
+    const selectedSubCategory = selSubCat.value;
+    if (selectedCategory === "--uncategorized--") return;
+    let materialsToShow = [];
+    if (selectedSubCategory === "--direct--") {
+      materialsToShow = state.allMaterials.filter(
+        (m) => m.category === selectedCategory && !m.subcategory
+      );
+    } else {
+      materialsToShow = state.allMaterials.filter(
+        (m) =>
+          m.category === selectedCategory &&
+          m.subcategory === selectedSubCategory
+      );
+    }
+    selMat.innerHTML = materialsToShow
+      .map((m) => `<option value="${m.material_id}">${m.title}</option>`)
+      .join("");
+  };
+
+  if (selCat.options.length > 0) selCat.onchange();
+  else {
+    selSubCat.style.display = "none";
+    selMat.innerHTML = `<option value="">등록된 교재가 없습니다</option>`;
+  }
+}
+
+/** 내신 플랜 에디터의 요일 선택 버튼 UI를 렌더링합니다. */
+function renderExamDaySelector() {
+  $$("#examDaySelector button").forEach((btn) => {
+    if (state.selectedExamDays.has(btn.dataset.day)) {
+      btn.classList.add("active");
+    } else {
+      btn.classList.remove("active");
+    }
+  });
+}
+
+/** 내신 플랜의 모든 교재 레인을 UI에 렌더링합니다. */
+function renderAllExamLanes() {
+  renderExamLane("main1");
+  renderExamLane("main2");
+  renderExamLane("vocab");
+}
+
+/** 내신 플랜의 특정 교재 레인을 UI에 렌더링합니다. */
+function renderExamLane(lane) {
+  const box = $(`#examLane${lane.charAt(0).toUpperCase() + lane.slice(1)}`);
+  const arr = state.examPlanLanes[lane];
+  if (!arr.length) {
+    box.innerHTML = `<div class="small muted">교재를 추가하세요.</div>`;
+    return;
+  }
+  box.innerHTML = arr
+    .map(
+      (b) => `
+      <div class="book-card">
+          <b>${b.title}</b>
+          <button class="btn-xs" style="background:#ef4444; float: right;" onclick="removeBookFromExamLane('${lane}','${b.instanceId}')">삭제</button>
+      </div>`
+    )
+    .join("");
+}
+
+/** 내신 플랜 레인에 교재를 추가합니다. */
+async function addBookToExamLane() {
+  const materialId = $("#examSelMaterial").value;
+  const lane = $("#examSelLane").value;
+  if (!materialId || !lane) return;
+
+  const title =
+    state.allMaterials.find((m) => m.material_id === materialId)?.title ||
+    materialId;
+
+  if (
+    Object.values(state.examPlanLanes)
+      .flat()
+      .some((b) => b.materialId === materialId)
+  ) {
+    return alert("이미 추가된 교재입니다.");
+  }
+
+  state.examPlanLanes[lane].push({
+    instanceId: `inst_exam_${Date.now()}`,
+    materialId,
+    title,
+  });
+  renderAllExamLanes();
+}
+
+/** 내신 플랜 레인에서 교재를 삭제합니다. */
+window.removeBookFromExamLane = (lane, instanceId) => {
+  state.examPlanLanes[lane] = state.examPlanLanes[lane].filter(
+    (b) => b.instanceId !== instanceId
+  );
+  renderAllExamLanes();
+};
+
+/** 내신 플랜을 서버에 저장합니다. */
+async function saveExamPlan() {
+  const school = $("#examSchoolSelector").value;
+  const grade = $("#examGradeSelector").value;
+  if (!school || !grade) return alert("대상 학교와 학년을 선택하세요.");
+
+  const planData = {
+    title: `${school} ${grade}학년 내신`,
+    startDate: $("#examStartDate").value,
+    endDate: $("#examEndDate").value,
+    days: [...state.selectedExamDays].join(","),
+    lanes: state.examPlanLanes,
+  };
+
+  if (
+    !planData.startDate ||
+    !planData.endDate ||
+    planData.startDate > planData.endDate
+  ) {
+    return alert("올바른 기간을 설정하세요.");
+  }
+  if (Object.values(planData.lanes).flat().length === 0) {
+    return alert("하나 이상의 교재를 추가하세요.");
+  }
+
+  try {
+    await api("/api/exam-plans", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ school, grade, planData }),
+    });
+    alert("내신 플랜이 성공적으로 저장되고, 대상 학생들에게 적용되었습니다.");
+    $("#examPlanEditor").style.display = "none";
+    onExamSchoolOrGradeChange();
+  } catch (e) {
+    alert(`내신 플랜 저장 실패: ${e.message}`);
+  }
+}
+
+/** 내신 플랜을 삭제합니다. */
+window.deleteExamPlan = async (examPlanId, school, grade) => {
+  if (
+    !confirm(
+      "정말 이 내신 플랜을 삭제하시겠습니까? 관련 학생들의 플랜에는 영향을 주지 않고, 관리 목록에서만 사라집니다."
+    )
+  )
+    return;
+  try {
+    await api(
+      `/api/exam-plans?school=${encodeURIComponent(
+        school
+      )}&grade=${grade}&examPlanId=${examPlanId}`,
+      {
+        method: "DELETE",
+      }
+    );
+    alert("내신 플랜이 삭제되었습니다.");
+    onExamSchoolOrGradeChange();
+  } catch (e) {
+    alert(`삭제 실패: ${e.message}`);
+  }
+};
+
+// ▲▲▲ [추가] 내신 플랜 관련 함수들 ▲▲▲
