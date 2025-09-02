@@ -3,11 +3,10 @@
 import { kv } from "@vercel/kv";
 import { readSheetObjects } from "../lib/sheets.js";
 
-// --- 날짜 계산을 위한 Helper 함수들 ---
+// --- 날짜 계산을 위한 Helper 함수들 (변경 없음) ---
 const DOW = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
 const toUtcDate = (dateString) => {
   if (!dateString || typeof dateString !== "string") {
-    // 유효하지 않은 입력에 대한 기본값 반환
     return new Date(Date.UTC(1970, 0, 1));
   }
   const parts = dateString.split("T")[0].split("-");
@@ -24,13 +23,11 @@ const addDays = (d, n) => {
   return x;
 };
 
-// 특정 기간 내의 수업일수를 계산하는 함수
 function countClassDays(startDate, endDate, classDaysSet) {
   let count = 0;
   const start = toUtcDate(startDate);
   const end = toUtcDate(endDate);
   if (start > end) return 0;
-
   for (let d = new Date(start); d <= end; d = addDays(d, 1)) {
     if (classDaysSet.has(DOW[d.getUTCDay()])) {
       count++;
@@ -39,14 +36,11 @@ function countClassDays(startDate, endDate, classDaysSet) {
   return count;
 }
 
-// 수업일수만큼 날짜를 이동시키는 함수 (양수: 뒤로, 음수: 앞으로)
 function shiftDateByClassDays(startDate, daysToShift, classDaysSet) {
   let shiftedDate = toUtcDate(startDate);
   if (daysToShift === 0) return shiftedDate;
-
   const direction = daysToShift > 0 ? 1 : -1;
   let daysCounted = 0;
-
   while (daysCounted < Math.abs(daysToShift)) {
     shiftedDate = addDays(shiftedDate, direction);
     if (classDaysSet.has(DOW[shiftedDate.getUTCDay()])) {
@@ -56,7 +50,7 @@ function shiftDateByClassDays(startDate, daysToShift, classDaysSet) {
   return shiftedDate;
 }
 
-// --- KV 저장을 위한 Helper 함수들 ---
+// --- KV 저장을 위한 Helper 함수들 (변경 없음) ---
 function isKvReady() {
   return !!(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
 }
@@ -101,7 +95,7 @@ export default async function handler(req, res) {
     }
   }
 
-  // --- POST: 새 내신 플랜 생성 및 학생 플랜에 적용 (기존 로직 유지 및 개선) ---
+  // --- POST: 새 내신 플랜 생성 및 학생 플랜에 적용 ---
   if (req.method === "POST") {
     try {
       const { school, grade, planData } = req.body;
@@ -144,7 +138,7 @@ export default async function handler(req, res) {
           startDate: planData.startDate,
           endDate: planData.endDate,
           lanes: planData.lanes,
-          days: studentScheduleDays,
+          days: studentScheduleDays, // [핵심] 학생의 개별 요일 적용
         };
 
         if (studentPlans.length === 0) {
@@ -160,17 +154,15 @@ export default async function handler(req, res) {
           continue;
         }
 
-        // 학생 플랜에 내신 기간 삽입 및 기존 플랜 조정
-        const planToModify = studentPlans[0]; // 단순화를 위해 첫 번째 플랜을 대상으로 가정
+        const planToModify = studentPlans[0];
         const originalSegments = planToModify.planSegments;
         const newSegments = [];
-        const examStartDate = examSegmentData.startDate;
-        const examEndDate = examSegmentData.endDate;
-        const examStartDateUtc = toUtcDate(examStartDate);
+        const examStartDateUtc = toUtcDate(examSegmentData.startDate);
+        const examEndDateUtc = toUtcDate(examSegmentData.endDate);
 
         const daysToShift = countClassDays(
-          examStartDate,
-          examEndDate,
+          examSegmentData.startDate,
+          examSegmentData.endDate,
           studentClassDaysSet
         );
         if (daysToShift <= 0) continue;
@@ -184,6 +176,30 @@ export default async function handler(req, res) {
             continue;
           }
 
+          if (segmentStartUtc >= examStartDateUtc) {
+            const segmentDaysSet = new Set(
+              (segment.days || studentScheduleDays)
+                .split(",")
+                .map((s) => s.trim().toUpperCase())
+            );
+            const shiftedStart = shiftDateByClassDays(
+              segment.startDate,
+              daysToShift,
+              segmentDaysSet
+            );
+            const shiftedEnd = shiftDateByClassDays(
+              segment.endDate,
+              daysToShift,
+              segmentDaysSet
+            );
+            newSegments.push({
+              ...segment,
+              startDate: toYMD(shiftedStart),
+              endDate: toYMD(shiftedEnd),
+            });
+            continue;
+          }
+
           if (
             segmentStartUtc < examStartDateUtc &&
             segmentEndUtc >= examStartDateUtc
@@ -193,33 +209,22 @@ export default async function handler(req, res) {
               endDate: toYMD(addDays(examStartDateUtc, -1)),
             });
 
+            const segmentDaysSet = new Set(
+              (segment.days || studentScheduleDays)
+                .split(",")
+                .map((s) => s.trim().toUpperCase())
+            );
             const shiftedEnd = shiftDateByClassDays(
               segment.endDate,
               daysToShift,
-              studentClassDaysSet
+              segmentDaysSet
             );
-            newSegments.push({
-              ...segment,
-              startDate: toYMD(addDays(toUtcDate(examEndDate), 1)),
-              endDate: toYMD(shiftedEnd),
-            });
-            continue;
-          }
 
-          if (segmentStartUtc >= examStartDateUtc) {
-            const shiftedStart = shiftDateByClassDays(
-              segment.startDate,
-              daysToShift,
-              studentClassDaysSet
-            );
-            const shiftedEnd = shiftDateByClassDays(
-              segment.endDate,
-              daysToShift,
-              studentClassDaysSet
-            );
+            // [수정] 분할된 뒷부분의 시작 날짜를 내신 종료일 바로 다음날부터 다시 계산
+            const partBStartDate = addDays(examEndDateUtc, 1);
             newSegments.push({
               ...segment,
-              startDate: toYMD(shiftedStart),
+              startDate: toYMD(partBStartDate),
               endDate: toYMD(shiftedEnd),
             });
             continue;
@@ -250,7 +255,7 @@ export default async function handler(req, res) {
     }
   }
 
-  // --- PUT: 기존 내신 플랜 수정 및 모든 학생 플랜에 반영 ---
+  // --- PUT: 기존 내신 플랜 수정 및 모든 학생 플랜에 반영 (변경 없음) ---
   if (req.method === "PUT") {
     try {
       const { school, grade, examPlanId, planData } = req.body;
@@ -280,7 +285,6 @@ export default async function handler(req, res) {
       };
       examPlans[planIndex] = updatedPlanData;
 
-      // --- 학생 플랜 업데이트 로직 시작 ---
       const { allStudents, allClasses } = await getStudentAndClassData();
       const targetStudents = allStudents.filter(
         (s) => s.school === school && String(s.grade) === String(grade)
@@ -301,7 +305,6 @@ export default async function handler(req, res) {
         const planToModify = studentPlans[0];
         let segments = planToModify.planSegments;
 
-        // 1. 기존 내신 기간 제거 및 플랜 당기기
         const oldDaysCount = countClassDays(
           oldPlanData.startDate,
           oldPlanData.endDate,
@@ -311,16 +314,21 @@ export default async function handler(req, res) {
         segments = segments.filter((s) => s.id !== oldExamSegmentId);
 
         segments = segments.map((segment) => {
+          const segmentDaysSet = new Set(
+            (segment.days || studentScheduleDays)
+              .split(",")
+              .map((s) => s.trim().toUpperCase())
+          );
           if (toUtcDate(segment.startDate) > toUtcDate(oldPlanData.endDate)) {
             const newStart = shiftDateByClassDays(
               segment.startDate,
               -oldDaysCount,
-              studentClassDaysSet
+              segmentDaysSet
             );
             const newEnd = shiftDateByClassDays(
               segment.endDate,
               -oldDaysCount,
-              studentClassDaysSet
+              segmentDaysSet
             );
             return {
               ...segment,
@@ -331,7 +339,6 @@ export default async function handler(req, res) {
           return segment;
         });
 
-        // 2. 새로운 내신 기간 삽입 및 플랜 밀기
         const newDaysCount = countClassDays(
           updatedPlanData.startDate,
           updatedPlanData.endDate,
@@ -343,11 +350,17 @@ export default async function handler(req, res) {
           days: studentScheduleDays,
         };
         const newExamStartUtc = toUtcDate(updatedPlanData.startDate);
+        const newExamEndUtc = toUtcDate(updatedPlanData.endDate);
 
         let finalSegments = [];
         for (const segment of segments) {
           const segmentStartUtc = toUtcDate(segment.startDate);
           const segmentEndUtc = toUtcDate(segment.endDate);
+          const segmentDaysSet = new Set(
+            (segment.days || studentScheduleDays)
+              .split(",")
+              .map((s) => s.trim().toUpperCase())
+          );
 
           if (segmentEndUtc < newExamStartUtc) {
             finalSegments.push(segment);
@@ -357,12 +370,12 @@ export default async function handler(req, res) {
             const shiftedStart = shiftDateByClassDays(
               segment.startDate,
               newDaysCount,
-              studentClassDaysSet
+              segmentDaysSet
             );
             const shiftedEnd = shiftDateByClassDays(
               segment.endDate,
               newDaysCount,
-              studentClassDaysSet
+              segmentDaysSet
             );
             finalSegments.push({
               ...segment,
@@ -383,11 +396,12 @@ export default async function handler(req, res) {
             const shiftedEnd = shiftDateByClassDays(
               segment.endDate,
               newDaysCount,
-              studentClassDaysSet
+              segmentDaysSet
             );
+            const partBStartDate = addDays(newExamEndUtc, 1);
             finalSegments.push({
               ...segment,
-              startDate: toYMD(addDays(toUtcDate(updatedPlanData.endDate), 1)),
+              startDate: toYMD(partBStartDate),
               endDate: toYMD(shiftedEnd),
             });
             continue;
@@ -400,7 +414,6 @@ export default async function handler(req, res) {
         );
         await kv.set(studentPlanKey, studentPlans);
       }
-      // --- 학생 플랜 업데이트 로직 종료 ---
 
       await kv.set(examPlanKey, examPlans);
       return res
@@ -412,7 +425,7 @@ export default async function handler(req, res) {
     }
   }
 
-  // --- DELETE: 내신 플랜 삭제 및 모든 학생 플랜에서 제거/조정 ---
+  // --- DELETE: 내신 플랜 삭제 및 모든 학생 플랜에서 제거/조정 (변경 없음) ---
   if (req.method === "DELETE") {
     try {
       const { school, grade, examPlanId } = req.query;
@@ -435,7 +448,6 @@ export default async function handler(req, res) {
           .json({ ok: false, error: "삭제할 내신 플랜을 찾지 못했습니다." });
       }
 
-      // --- 학생 플랜 업데이트 로직 시작 ---
       const { allStudents, allClasses } = await getStudentAndClassData();
       const targetStudents = allStudents.filter(
         (s) => s.school === school && String(s.grade) === String(grade)
@@ -458,7 +470,6 @@ export default async function handler(req, res) {
         if (!planToModify.planSegments.some((s) => s.id === examSegmentId))
           continue;
 
-        // 내신 기간 제거 및 플랜 당기기
         const daysToShiftBack = countClassDays(
           planToDelete.startDate,
           planToDelete.endDate,
@@ -470,16 +481,21 @@ export default async function handler(req, res) {
         );
 
         updatedSegments = updatedSegments.map((segment) => {
+          const segmentDaysSet = new Set(
+            (segment.days || studentScheduleDays)
+              .split(",")
+              .map((s) => s.trim().toUpperCase())
+          );
           if (toUtcDate(segment.startDate) > toUtcDate(planToDelete.endDate)) {
             const newStart = shiftDateByClassDays(
               segment.startDate,
               -daysToShiftBack,
-              studentClassDaysSet
+              segmentDaysSet
             );
             const newEnd = shiftDateByClassDays(
               segment.endDate,
               -daysToShiftBack,
-              studentClassDaysSet
+              segmentDaysSet
             );
             return {
               ...segment,
@@ -494,7 +510,6 @@ export default async function handler(req, res) {
         );
         await kv.set(studentPlanKey, studentPlans);
       }
-      // --- 학생 플랜 업데이트 로직 종료 ---
 
       examPlans = examPlans.filter((p) => p.id !== examPlanId);
       await kv.set(examPlanKey, examPlans);

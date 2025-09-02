@@ -1783,9 +1783,10 @@ async function saveExamPlan() {
 
 /** 내신 플랜을 삭제합니다. */
 window.deleteExamPlan = async (examPlanId, school, grade) => {
+  // [수정] 확인 메시지를 현재 기능에 맞게 변경
   if (
     !confirm(
-      "정말 이 내신 플랜을 삭제하시겠습니까? 학생들의 기존 플랜에 생성된 내신 기간은 삭제되지 않습니다."
+      "정말 이 내신 플랜을 삭제하시겠습니까?\n대상 학생들의 플랜에서도 해당 내신 기간이 삭제되고, 이후 일정이 조정됩니다. 이 작업은 되돌릴 수 없습니다."
     )
   )
     return;
