@@ -1,4 +1,4 @@
-// /public/js/plan-v3.js — 최종 수정본 (내신 플랜 요일 선택 기능 제거)
+// /public/js/plan-v3.js — 최종 수정본 (내신 플랜 미리보기 기능 추가)
 
 const $ = (q) => document.querySelector(q);
 const $$ = (q) => document.querySelectorAll(q);
@@ -41,7 +41,6 @@ const state = {
   currentEventMonth: new Date(),
   examPlans: [],
   examPlanLanes: { main1: [], main2: [], vocab: [] },
-  // [수정] selectedExamDays 상태 삭제
   editingExamPlanId: null,
 };
 
@@ -206,8 +205,9 @@ function attachEventListeners() {
   $("#btnAddNewExamPlan").onclick = showExamPlanEditorForNewPlan;
   $("#btnAddExamBook").onclick = addBookToExamLane;
   $("#btnSaveExamPlan").onclick = saveExamPlan;
-
-  // [수정] 내신 플랜 요일 선택기 이벤트 리스너 삭제
+  // ▼▼▼ [추가] 내신 플랜 미리보기 버튼 이벤트 리스너 ▼▼▼
+  $("#btnPreviewExamPlan").onclick = previewExamPlan;
+  // ▲▲▲ [추가] 내신 플랜 미리보기 버튼 이벤트 리스너 ▲▲▲
 }
 
 function renderDaySelector() {
@@ -1419,7 +1419,6 @@ function showExamPlanEditorForNewPlan() {
   $("#examStartDate").value = today;
   $("#examEndDate").value = today;
 
-  // [수정] 요일 선택기 관련 코드 삭제
   state.examPlanLanes = { main1: [], main2: [], vocab: [] };
   renderAllExamLanes();
 
@@ -1509,8 +1508,6 @@ function renderExamMaterialOptions() {
   }
 }
 
-/** [수정] 내신 플랜 요일 선택기 UI 렌더링 함수 삭제 */
-
 /** 내신 플랜의 모든 교재 레인을 UI에 렌더링합니다. */
 function renderAllExamLanes() {
   renderExamLane("main1");
@@ -1571,13 +1568,75 @@ window.removeBookFromExamLane = (lane, instanceId) => {
   renderAllExamLanes();
 };
 
+// ▼▼▼ [추가] 내신 플랜 미리보기 함수 ▼▼▼
+async function previewExamPlan() {
+  const school = $("#examSchoolSelector").value;
+  const grade = $("#examGradeSelector").value;
+  if (!school || !grade)
+    return alert("미리보기를 할 대상 학교와 학년을 선택하세요.");
+
+  const targetStudents = state.allStudents.filter(
+    (s) => s.school === school && String(s.grade) === String(grade)
+  );
+  if (targetStudents.length === 0) {
+    return alert(
+      "미리보기를 할 학생이 없습니다. 다른 학교/학년을 선택해주세요."
+    );
+  }
+
+  const representativeStudent = targetStudents[0]; // 첫 번째 학생을 기준으로 미리보기 생성
+  const studentClass = state.allClasses.find(
+    (c) => c.id === representativeStudent.class_id
+  );
+  const studentScheduleDays = studentClass?.schedule_days || "MON,WED,FRI";
+
+  const startDate = $("#examStartDate").value;
+  const endDate = $("#examEndDate").value;
+  if (!startDate || !endDate) return alert("시작/끝 날짜를 선택하세요.");
+
+  const lanes = state.examPlanLanes;
+
+  const body = {
+    startDate,
+    endDate,
+    days: studentScheduleDays,
+    lanes,
+    userSkips: [], // 내신 미리보기에서는 개인 결석 미적용
+    events: state.allEvents,
+    studentInfo: representativeStudent,
+  };
+
+  try {
+    $("#result").innerHTML = "내신 플랜 미리보기를 생성 중입니다...";
+    const res = await api("/api/plan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(res.error);
+
+    renderPrintable(res.items, {
+      studentNames: [
+        `${school} ${grade}학년 (대표 학생: ${representativeStudent.name})`,
+      ],
+      startDate,
+      endDate,
+    });
+
+    // 미리보기 결과가 보이도록 스크롤 이동
+    $("#result").scrollIntoView({ behavior: "smooth" });
+  } catch (e) {
+    $("#result").textContent = `미리보기 생성 실패: ${e.message}`;
+  }
+}
+// ▲▲▲ [추가] 내신 플랜 미리보기 함수 ▲▲▲
+
 /** 내신 플랜을 서버에 저장합니다. */
 async function saveExamPlan() {
   const school = $("#examSchoolSelector").value;
   const grade = $("#examGradeSelector").value;
   if (!school || !grade) return alert("대상 학교와 학년을 선택하세요.");
 
-  // [수정] days 속성을 제거하고 서버에서 처리하도록 함
   const planData = {
     title: `${school} ${grade}학년 내신`,
     startDate: $("#examStartDate").value,
