@@ -37,6 +37,7 @@ const state = {
   selectionEnd: null,
   isInsertionMode: false,
   insertionSegmentId: null,
+  selectedDays: new Set(),
   currentEventMonth: new Date(),
 };
 
@@ -98,10 +99,10 @@ function updatePlanSegmentDetails() {
     state.planSegments[0].startDate = $("#startDate").value;
     const lastSegment = state.planSegments[state.planSegments.length - 1];
     lastSegment.endDate = $("#endDate").value;
-    const defaultSchedule =
-      state.allClasses.find((c) => c.id === state.selectedStudent.class_id)
-        ?.schedule_days || "MON,WED,FRI";
-    const newDays = $("#customDays").value || defaultSchedule;
+
+    // [수정] customDays input 대신 selectedDays Set에서 값을 가져옴
+    const newDays = [...state.selectedDays].join(",") || "MON,WED,FRI";
+
     for (const segment of state.planSegments) {
       segment.days = newDays;
     }
@@ -152,7 +153,9 @@ function attachEventListeners() {
   $("#btnInsertMode").onclick = toggleInsertionMode;
   $("#startDate").onchange = updatePlanSegmentDetails;
   $("#endDate").onchange = updatePlanSegmentDetails;
-  $("#customDays").oninput = updatePlanSegmentDetails;
+
+  // [삭제] $("#customDays").oninput = updatePlanSegmentDetails;
+
   $("#btnPrevMonth").onclick = () => {
     state.currentEventMonth.setMonth(state.currentEventMonth.getMonth() - 1);
     renderEvents();
@@ -162,6 +165,30 @@ function attachEventListeners() {
     renderEvents();
   };
   $("#eventScope").onchange = renderScopedEventInputs;
+
+  // [추가] 요일 선택 버튼 이벤트 리스너
+  $$("#daySelector button").forEach((btn) => {
+    btn.onclick = () => {
+      const day = btn.dataset.day;
+      if (state.selectedDays.has(day)) {
+        state.selectedDays.delete(day);
+      } else {
+        state.selectedDays.add(day);
+      }
+      renderDaySelector();
+      updatePlanSegmentDetails(); // 변경 시 바로 미리보기 업데이트
+    };
+  });
+}
+
+function renderDaySelector() {
+  $$("#daySelector button").forEach((btn) => {
+    if (state.selectedDays.has(btn.dataset.day)) {
+      btn.classList.add("active");
+    } else {
+      btn.classList.remove("active");
+    }
+  });
 }
 
 function renderEvents() {
@@ -405,11 +432,21 @@ function showPlanEditorForNewPlan() {
   const today = new Date().toISOString().slice(0, 10);
   $("#startDate").value = today;
   $("#endDate").value = today;
+
   const defaultSchedule = state.selectedStudent
     ? state.allClasses.find((c) => c.id === state.selectedStudent.class_id)
         ?.schedule_days || "MON,WED,FRI"
     : "MON,WED,FRI";
-  $("#customDays").value = defaultSchedule;
+
+  // [수정] 기본 요일을 state에 설정하고 버튼 UI를 렌더링
+  state.selectedDays = new Set(
+    defaultSchedule
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+  );
+  renderDaySelector();
+
   state.planSegments = [
     {
       id: `seg_${Date.now()}`,
@@ -1043,7 +1080,16 @@ async function loadPlanForEditing(planId) {
     $("#startDate").value = state.planSegments[0].startDate;
     $("#endDate").value =
       state.planSegments[state.planSegments.length - 1].endDate;
-    $("#customDays").value = state.planSegments[0].days || "";
+
+    // [수정] 불러온 플랜의 요일 정보를 파싱하여 버튼 UI에 반영
+    const days = state.planSegments[0].days || "";
+    state.selectedDays = new Set(
+      days
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+    );
+    renderDaySelector();
   }
   if (plan.context && Array.isArray(plan.context.userSkips)) {
     state.userSkips = plan.context.userSkips.reduce((acc, skip) => {
@@ -1060,6 +1106,7 @@ async function loadPlanForEditing(planId) {
   $("#btnSave").textContent = "수정 내용 저장";
   triggerPreview();
 }
+
 window.loadPlanForEditing = loadPlanForEditing;
 
 function attachModalEventListeners() {
