@@ -193,7 +193,7 @@
         color: #fff;
         border-color: var(--brand2);
       }
-      /* ▼▼▼ [추가] 탭 스타일 ▼▼▼ */
+      /* 탭 스타일 */
       .tabs {
         display: flex;
         gap: 4px;
@@ -220,7 +220,6 @@
       .tab-content.active {
         display: block;
       }
-      /* ▲▲▲ [추가] 탭 스타일 ▲▲▲ */
     </style>
   </head>
   <body>
@@ -245,53 +244,75 @@
           </div>
 
           <div id="tabContentEvent" class="tab-content active">
+            <div class="grid2" style="margin-bottom: 12px">
+              <div>
+                <label>날짜</label>
+                <input type="date" id="eventDate" />
+              </div>
+              <div>
+                <label>내용</label>
+                <input id="eventTitle" placeholder="예: 학원 여름방학" />
+              </div>
+            </div>
             <div class="grid2">
               <div>
                 <label>적용 대상</label>
-                <div style="display: flex; gap: 12px; margin-bottom: 12px">
-                  <label
+                <div
+                  style="
+                    display: flex;
+                    gap: 12px;
+                    align-items: center;
+                    height: 100%;
+                    padding-bottom: 6px;
+                  "
+                >
+                  <label style="margin: 0"
                     ><input
                       type="radio"
                       name="applyTo"
                       value="attending"
                       checked
                     />
-                    출석 학생만 적용</label
+                    출석 학생만</label
                   >
-                  <label
-                    ><input type="radio" name="applyTo" value="all" /> 모든 학생
-                    적용</label
+                  <label style="margin: 0"
+                    ><input type="radio" name="applyTo" value="all" /> 모든
+                    학생</label
                   >
                 </div>
               </div>
-              <div></div>
-            </div>
-            <div class="row">
-              <input type="date" id="eventDate" />
-              <select id="eventScope" style="flex: 1">
-                <option value="all">전체</option>
-                <option value="school">학교별</option>
-                <option value="school_grade">학교 및 학년별</option>
-                <option value="grade">학년별</option>
-                <option value="class">반별</option>
-              </select>
-              <div
-                id="scopedValueContainer"
-                style="flex: 2; display: flex; gap: 8px"
-              ></div>
-              <input
-                id="eventTitle"
-                placeholder="내용 (예: 학원 여름방학)"
-                style="flex: 2"
-              />
-              <button id="btnAddEvent" class="btn" style="flex: 1">추가</button>
+              <div class="row">
+                <select id="eventScope" style="flex: 2">
+                  <option value="all">전체</option>
+                  <option value="school">학교별</option>
+                  <option value="school_grade">학교 및 학년별</option>
+                  <option value="grade">학년별</option>
+                  <option value="class">반별</option>
+                </select>
+                <div
+                  id="scopedValueContainer"
+                  style="flex: 3; display: flex; gap: 8px"
+                ></div>
+                <button id="btnAddEvent" class="btn" style="flex: 1">
+                  추가
+                </button>
+              </div>
             </div>
           </div>
 
           <div id="tabContentSupplementary" class="tab-content">
+            <div class="grid2" style="margin-bottom: 12px">
+              <div>
+                <label>보강 날짜</label>
+                <input type="date" id="supDate" />
+              </div>
+              <div>
+                <label>보강 내용</label>
+                <input id="supTitle" placeholder="예: 정기 보강" />
+              </div>
+            </div>
             <div class="row">
-              <input type="date" id="supDate" />
-              <select id="supScope" style="flex: 1">
+              <select id="supScope" style="flex: 2">
                 <option value="all">전체</option>
                 <option value="school">학교별</option>
                 <option value="school_grade">학교 및 학년별</option>
@@ -300,19 +321,13 @@
               </select>
               <div
                 id="supScopedValueContainer"
-                style="flex: 2; display: flex; gap: 8px"
+                style="flex: 3; display: flex; gap: 8px"
               ></div>
-              <input
-                id="supTitle"
-                placeholder="내용 (예: 정기 보강)"
-                style="flex: 2"
-              />
               <button id="btnAddSupplementary" class="btn" style="flex: 1">
                 보강 추가
               </button>
             </div>
           </div>
-
           <div
             class="month-nav"
             style="
@@ -348,6 +363,7 @@
           <div id="eventList" class="list mt" style="max-height: 150px"></div>
         </div>
       </section>
+
       <div class="main-layout">
         <div class="config-panel">
           <section class="card">
