@@ -1,4 +1,4 @@
-// /api/exam-plans.js — 수정된 파일
+// /api/exam-plans.js (최종 수정본 - 병합 로직 완전 개선)
 
 import { kv } from "@vercel/kv";
 import { readSheetObjects } from "../lib/sheets.js";
@@ -54,113 +54,101 @@ async function getStudentAndClassData() {
   ]);
 }
 
-// --- 학생별 플랜 조작 함수 (핵심 수정 지점) ---
+// =================================================================
+// ▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼ 핵심 수정 함수 ▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼
+// =================================================================
+/**
+ * 학생의 플랜 구간 배열에서 특정 내신 플랜 구간을 삭제하고,
+ * 그로 인해 분리되었던 앞/뒤 일반 플랜 구간을 다시 병합하는 함수
+ */
 function processSegmentsAfterDeletion(
   segments,
   oldExamPlan,
   studentScheduleDays
 ) {
   const examIdToRemove = `seg_exam_${oldExamPlan.id}`;
-  const originalExamIndex = segments.findIndex((s) => s.id === examIdToRemove);
+  const examSegmentIndex = segments.findIndex((s) => s.id === examIdToRemove);
 
-  if (originalExamIndex === -1) return segments;
+  // 삭제할 내신 플랜이 없으면 원본 그대로 반환
+  if (examSegmentIndex === -1) {
+    return segments;
+  }
 
-  const segmentsWithoutExam = segments.filter((s) => s.id !== examIdToRemove);
-  if (segmentsWithoutExam.length < 1) return [];
+  const finalSegments = [...segments]; // 조작을 위해 원본 배열 복사
 
-  const studentDaysSet = new Set(
-    studentScheduleDays.split(",").map((d) => d.trim().toUpperCase())
-  );
-  const daysToShiftBack = -Math.abs(
-    countClassDays(oldExamPlan.startDate, oldExamPlan.endDate, studentDaysSet)
-  );
-  const oldExamEndUtc = toUtcDate(oldExamPlan.endDate);
+  const prevSegmentIndex = examSegmentIndex - 1;
+  const nextSegmentIndex = examSegmentIndex + 1;
 
-  const prevSegmentOriginal =
-    originalExamIndex > 0 ? segments[originalExamIndex - 1] : null;
-  const nextSegmentOriginal =
-    originalExamIndex < segments.length - 1
-      ? segments[originalExamIndex + 1]
+  const prevSegment =
+    prevSegmentIndex >= 0 ? finalSegments[prevSegmentIndex] : null;
+  const nextSegment =
+    nextSegmentIndex < finalSegments.length
+      ? finalSegments[nextSegmentIndex]
       : null;
 
-  if (prevSegmentOriginal && nextSegmentOriginal) {
-    const prevLanesId = JSON.stringify(
-      Object.values(prevSegmentOriginal.lanes || {}).flatMap((lane) =>
-        (lane || []).map((b) => b.instanceId).sort()
-      )
-    );
-    const nextLanesId = JSON.stringify(
-      Object.values(nextSegmentOriginal.lanes || {}).flatMap((lane) =>
-        (lane || []).map((b) => b.instanceId).sort()
-      )
-    );
+  let canMerge = false;
+  if (prevSegment && nextSegment) {
     const daysMatch =
-      (prevSegmentOriginal.days || studentScheduleDays) ===
-      (nextSegmentOriginal.days || studentScheduleDays);
+      (prevSegment.days || studentScheduleDays) ===
+      (nextSegment.days || studentScheduleDays);
+    const prevBooks = Object.values(prevSegment.lanes || {})
+      .flat()
+      .map((b) => b.instanceId)
+      .sort();
+    const nextBooks = Object.values(nextSegment.lanes || {})
+      .flat()
+      .map((b) => b.instanceId)
+      .sort();
 
-    if (prevLanesId === nextLanesId && prevLanesId !== "[]" && daysMatch) {
-      // ▼▼▼ 핵심 수정 시작 ▼▼▼
-      const mergedLanes = JSON.parse(
-        JSON.stringify(prevSegmentOriginal.lanes || {})
-      );
-      for (const lane in mergedLanes) {
-        if (mergedLanes.hasOwnProperty(lane)) {
-          mergedLanes[lane].forEach((book) => {
-            const nextBook = nextSegmentOriginal.lanes?.[lane]?.find(
-              (b) => b.instanceId === book.instanceId
-            );
-            if (nextBook) {
-              book.endUnitCode = nextBook.endUnitCode;
-            }
-          });
-        }
-      }
-
-      const mergedSegment = {
-        ...prevSegmentOriginal,
-        endDate: nextSegmentOriginal.endDate,
-        lanes: mergedLanes, // 수정된 진도 정보 사용
-      };
-      // ▲▲▲ 핵심 수정 끝 ▲▲▲
-
-      const finalSegments = segmentsWithoutExam.filter(
-        (s) =>
-          s.id !== prevSegmentOriginal.id && s.id !== nextSegmentOriginal.id
-      );
-      finalSegments.push(mergedSegment);
-      finalSegments.sort((a, b) => a.startDate.localeCompare(b.startDate));
-
-      return finalSegments.map((seg) => {
-        if (toUtcDate(seg.startDate) > oldExamEndUtc) {
-          const segDaysSet = new Set(
-            (seg.days || studentScheduleDays)
-              .split(",")
-              .map((d) => d.trim().toUpperCase())
-          );
-          const newStart = shiftDateByClassDays(
-            seg.startDate,
-            daysToShiftBack,
-            segDaysSet
-          );
-          const newEnd = shiftDateByClassDays(
-            seg.endDate,
-            daysToShiftBack,
-            segDaysSet
-          );
-          return { ...seg, startDate: toYMD(newStart), endDate: toYMD(newEnd) };
-        }
-        return seg;
-      });
+    // 조건: 요일 설정이 같고, 교재 구성이 같거나, 뒷구간의 교재가 비어있다면 병합 가능
+    if (daysMatch && JSON.stringify(prevBooks) === JSON.stringify(nextBooks)) {
+      canMerge = true;
     }
   }
 
-  return segmentsWithoutExam.map((seg) => {
+  if (canMerge) {
+    // [병합 실행]
+    // 앞 구간의 교재 정보를 기반으로, 뒷 구간의 '종료 차시' 정보만 가져와 합칩니다.
+    const mergedLanes = JSON.parse(JSON.stringify(prevSegment.lanes));
+    for (const lane in mergedLanes) {
+      mergedLanes[lane].forEach((book) => {
+        const nextBook = nextSegment.lanes?.[lane]?.find(
+          (b) => b.instanceId === book.instanceId
+        );
+        if (nextBook) {
+          book.endUnitCode = nextBook.endUnitCode;
+        }
+      });
+    }
+
+    // 앞 구간을 기준으로 날짜와 교재 정보를 합친 새로운 구간 생성
+    const mergedSegment = {
+      ...prevSegment,
+      endDate: nextSegment.endDate, // 종료일은 뒷 구간의 것을 사용
+      lanes: mergedLanes, // 교재 정보는 합친 것을 사용
+    };
+
+    // 기존의 3개 구간(앞, 내신, 뒤)을 삭제하고, 합쳐진 1개의 구간으로 교체
+    finalSegments.splice(prevSegmentIndex, 3, mergedSegment);
+  } else {
+    // [병합 불가] 내신 구간만 깔끔하게 삭제
+    finalSegments.splice(examSegmentIndex, 1);
+  }
+
+  // [날짜 재조정] 삭제된 내신 기간만큼 이후의 모든 플랜 날짜를 앞으로 당김
+  const daysToShiftBack = -Math.abs(
+    countClassDays(
+      oldExamPlan.startDate,
+      oldExamPlan.endDate,
+      new Set(studentScheduleDays.split(","))
+    )
+  );
+  const oldExamEndUtc = toUtcDate(oldExamPlan.endDate);
+
+  return finalSegments.map((seg) => {
+    // 내신 기간보다 뒤에 시작하는 구간들만 날짜를 이동시킴
     if (toUtcDate(seg.startDate) > oldExamEndUtc) {
-      const segDaysSet = new Set(
-        (seg.days || studentScheduleDays)
-          .split(",")
-          .map((d) => d.trim().toUpperCase())
-      );
+      const segDaysSet = new Set((seg.days || studentScheduleDays).split(","));
       const newStart = shiftDateByClassDays(
         seg.startDate,
         daysToShiftBack,
@@ -176,10 +164,12 @@ function processSegmentsAfterDeletion(
     return seg;
   });
 }
+// =================================================================
+// ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲ 핵심 수정 함수 ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+// =================================================================
 
-// --- API 핸들러 (이하 동일) ---
+// --- API 핸들러 (이하 변경 없음) ---
 export default async function handler(req, res) {
-  // ... (핸들러의 나머지 부분은 변경 없음) ...
   if (!isKvReady())
     return res
       .status(501)
