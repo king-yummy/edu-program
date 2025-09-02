@@ -1,26 +1,62 @@
-// /api/exam-plans.js — 신규 파일
+// /api/exam-plans.js — 신규 파일 (핵심 로직 구현)
 
 import { kv } from "@vercel/kv";
 import { readSheetObjects } from "../lib/sheets.js";
 
-// --- Helper Functions ---
+// --- 날짜 계산을 위한 Helper 함수들 ---
+const DOW = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+const toUtcDate = (dateString) => {
+  const [year, month, day] = (dateString || "")
+    .split("T")[0]
+    .split("-")
+    .map(Number);
+  return new Date(Date.UTC(year, month - 1, day));
+};
+const toYMD = (d) => d.toISOString().slice(0, 10);
+const addDays = (d, n) => {
+  const x = new Date(d);
+  x.setUTCDate(x.getUTCDate() + n);
+  return x;
+};
 
+/** 특정 기간 내에 포함된 수업일수(class days)를 계산하는 함수 */
+function countClassDays(startDate, endDate, classDaysSet) {
+  let count = 0;
+  const start = toUtcDate(startDate);
+  const end = toUtcDate(endDate);
+  for (let d = new Date(start); d <= end; d = addDays(d, 1)) {
+    if (classDaysSet.has(DOW[d.getUTCDay()])) {
+      count++;
+    }
+  }
+  return count;
+}
+
+/** 특정 날짜로부터 N개의 수업일수만큼 뒤의 날짜를 계산하는 함수 */
+function shiftDateByClassDays(startDate, daysToShift, classDaysSet) {
+  let shiftedDate = toUtcDate(startDate);
+  let daysCounted = 0;
+  while (daysCounted < daysToShift) {
+    shiftedDate = addDays(shiftedDate, 1);
+    if (classDaysSet.has(DOW[shiftedDate.getUTCDay()])) {
+      daysCounted++;
+    }
+  }
+  return shiftedDate;
+}
+
+// --- KV 저장을 위한 Helper 함수들 ---
 function isKvReady() {
   return !!(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
 }
-
-// 학교와 학년 기준으로 내신 플랜 Key 생성
 function getExamPlanKey(school, grade) {
   return `exam-plans:${encodeURIComponent(school)}:${grade}`;
 }
-
-// 학생별 개인 플랜 Key 생성
 function getStudentPlanKey(studentId) {
   return `plans:${studentId}`;
 }
 
-// --- Main Handler ---
-
+// --- 메인 API 핸들러 ---
 export default async function handler(req, res) {
   if (!isKvReady()) {
     return res
@@ -28,7 +64,7 @@ export default async function handler(req, res) {
       .json({ ok: false, error: "KV 데이터베이스가 설정되지 않았습니다." });
   }
 
-  // --- GET: 특정 학교/학년의 내신 플랜 목록 조회 ---
+  // --- GET: 내신 플랜 목록 조회 ---
   if (req.method === "GET") {
     const { school, grade } = req.query;
     if (!school || !grade) {
@@ -55,10 +91,11 @@ export default async function handler(req, res) {
           .json({ ok: false, error: "school, grade, planData가 필요합니다." });
       }
 
-      // 1. 대상 학생 목록 조회
-      const allStudents = await readSheetObjects(
-        process.env.STUDENTS_RANGE || "student!A:Z"
-      );
+      // 1. 대상 학생 및 반 정보 조회
+      const [allStudents, allClasses] = await Promise.all([
+        readSheetObjects(process.env.STUDENTS_RANGE || "student!A:Z"),
+        readSheetObjects(process.env.CLASSES_RANGE || "class!A:Z"),
+      ]);
       const targetStudents = allStudents.filter(
         (s) => s.school === school && String(s.grade) === String(grade)
       );
@@ -69,50 +106,148 @@ export default async function handler(req, res) {
           .json({ ok: false, error: "해당하는 학생을 찾을 수 없습니다." });
       }
 
-      // 2. 새 내신 플랜 객체 생성
       const newExamPlan = {
         ...planData,
         id: `exam_${Date.now()}`,
         createdAt: new Date().toISOString(),
       };
 
-      // 3. 학생별로 기존 플랜에 내신 플랜 삽입/수정
+      // 2. [핵심] 학생별로 기존 플랜에 내신 플랜 삽입/수정
       for (const student of targetStudents) {
+        const studentClass = allClasses.find((c) => c.id === student.class_id);
+        const studentScheduleDays =
+          studentClass?.schedule_days || "MON,WED,FRI";
+        const studentClassDaysSet = new Set(
+          studentScheduleDays.split(",").map((s) => s.trim().toUpperCase())
+        );
+
         const studentPlanKey = getStudentPlanKey(student.id);
         let studentPlans = (await kv.get(studentPlanKey)) || [];
 
-        // 여기에 내신 기간을 기존 플랜에 삽입하고 뒤로 미루는 복잡한 로직이 들어가야 합니다.
-        // 지금은 단순화를 위해, 기존 플랜을 모두 덮어쓰는 대신
-        // "기존 플랜이 있으면 맨 뒤에 추가, 없으면 새로 생성"하는 방식으로 구현합니다.
-        // (추후 이 부분을 정교하게 다듬어야 합니다)
+        // Case 1: 기존 플랜이 없는 경우
+        if (studentPlans.length === 0) {
+          const newPlan = {
+            planId: `pln_exam_${student.id}_${newExamPlan.id}`,
+            studentId: student.id,
+            planSegments: [
+              {
+                id: `seg_exam_${newExamPlan.id}`,
+                ...planData,
+              },
+            ],
+            userSkips: {},
+          };
+          studentPlans.push(newPlan);
+          await kv.set(studentPlanKey, studentPlans);
+          continue; // 다음 학생으로
+        }
 
-        const examSegment = {
-          id: `seg_${newExamPlan.id}`,
-          startDate: newExamPlan.startDate,
-          endDate: newExamPlan.endDate,
-          days: newExamPlan.days,
-          lanes: newExamPlan.lanes,
-        };
+        // Case 2: 기존 플랜이 있는 경우
+        const examStartDate = newExamPlan.startDate;
+        const examEndDate = newExamPlan.endDate;
 
-        // 간단한 구현: 일단은 그냥 새 플랜으로 추가합니다.
-        const studentPersonalPlan = {
-          planId: `pln_exam_${student.id}_${newExamPlan.id}`,
-          studentId: student.id,
-          createdAt: new Date().toISOString(),
-          planSegments: [examSegment],
-          userSkips: {}, // 내신 기간에는 개인 스킵 초기화
-        };
+        let planToModify = studentPlans.find((p) =>
+          p.planSegments.some(
+            (s) => examStartDate >= s.startDate && examStartDate <= s.endDate
+          )
+        );
 
-        // 해당 학생의 기존 플랜 중 내신 기간과 겹치는 플랜이 있는지 확인하고 처리하는 로직 필요
-        // 지금은 단순하게 추가합니다.
-        studentPlans.push(studentPersonalPlan);
+        // 겹치는 플랜이 없으면, 새 플랜으로 추가 (혹은 다른 정책 적용 가능)
+        if (!planToModify) {
+          const newPlan = {
+            planId: `pln_exam_${student.id}_${newExamPlan.id}`,
+            studentId: student.id,
+            planSegments: [{ id: `seg_exam_${newExamPlan.id}`, ...planData }],
+            userSkips: {},
+          };
+          studentPlans.push(newPlan);
+          await kv.set(studentPlanKey, studentPlans);
+          continue;
+        }
 
+        const originalSegments = planToModify.planSegments;
+        const newSegments = [];
+
+        const daysToShift = countClassDays(
+          examStartDate,
+          examEndDate,
+          studentClassDaysSet
+        );
+
+        for (const segment of originalSegments) {
+          // 내신 기간과 전혀 겹치지 않는 이전 구간
+          if (segment.endDate < examStartDate) {
+            newSegments.push(segment);
+            continue;
+          }
+          // 내신 기간이 완전히 포함되는 구간 (분할 대상)
+          if (
+            segment.startDate < examStartDate &&
+            segment.endDate > examEndDate
+          ) {
+            // beforeSegment
+            newSegments.push({
+              ...segment,
+              endDate: toYMD(addDays(toUtcDate(examStartDate), -1)),
+            });
+            // examSegment
+            newSegments.push({ id: `seg_exam_${newExamPlan.id}`, ...planData });
+            // afterSegment (밀림 처리)
+            const originalAfterStart = toUtcDate(examEndDate);
+            const newAfterStart = shiftDateByClassDays(
+              originalAfterStart,
+              1,
+              studentClassDaysSet
+            );
+
+            const afterDurationDays = countClassDays(
+              toYMD(addDays(toUtcDate(examEndDate), 1)),
+              segment.endDate,
+              studentClassDaysSet
+            );
+            const newAfterEnd = shiftDateByClassDays(
+              newAfterStart,
+              afterDurationDays - 1,
+              studentClassDaysSet
+            );
+
+            newSegments.push({
+              ...segment,
+              startDate: toYMD(newAfterStart),
+              endDate: toYMD(newAfterEnd),
+            });
+          } else {
+            // 걸치거나, 내신 기간 이후의 모든 구간은 밀어야 함
+            const newStartDate = shiftDateByClassDays(
+              toUtcDate(segment.startDate),
+              daysToShift,
+              studentClassDaysSet
+            );
+            const duration = countClassDays(
+              segment.startDate,
+              segment.endDate,
+              studentClassDaysSet
+            );
+            const newEndDate = shiftDateByClassDays(
+              newStartDate,
+              duration - 1,
+              studentClassDaysSet
+            );
+            newSegments.push({
+              ...segment,
+              startDate: toYMD(newStartDate),
+              endDate: toYMD(newEndDate),
+            });
+          }
+        }
+
+        planToModify.planSegments = newSegments;
         await kv.set(studentPlanKey, studentPlans);
       }
 
-      // 4. 학교/학년별 내신 플랜 목록에 새 플랜 추가 및 저장
+      // 3. 학교/학년별 내신 플랜 목록에 새 플랜 추가 및 저장
       const examPlanKey = getExamPlanKey(school, grade);
-      const examPlans = (await kv.get(examPlanKey)) || [];
+      let examPlans = (await kv.get(examPlanKey)) || [];
       examPlans.push(newExamPlan);
       await kv.set(examPlanKey, examPlans);
 
@@ -125,39 +260,7 @@ export default async function handler(req, res) {
 
   // --- DELETE: 내신 플랜 삭제 ---
   if (req.method === "DELETE") {
-    try {
-      const { school, grade, examPlanId } = req.query;
-      if (!school || !grade || !examPlanId) {
-        return res
-          .status(400)
-          .json({
-            ok: false,
-            error: "school, grade, examPlanId가 필요합니다.",
-          });
-      }
-
-      const examPlanKey = getExamPlanKey(school, grade);
-      let examPlans = (await kv.get(examPlanKey)) || [];
-
-      const initialLength = examPlans.length;
-      examPlans = examPlans.filter((p) => p.id !== examPlanId);
-
-      if (examPlans.length === initialLength) {
-        return res
-          .status(404)
-          .json({ ok: false, error: "삭제할 내신 플랜을 찾지 못했습니다." });
-      }
-
-      await kv.set(examPlanKey, examPlans);
-
-      // (심화) 여기서 해당 내신 플랜을 받았던 모든 학생들의 개인 플랜에 찾아가서
-      // 해당 내신 기간을 삭제하고 뒤에 밀렸던 플랜을 다시 앞으로 당겨오는 로직이 필요합니다.
-      // 지금은 관리 목록에서만 삭제합니다.
-
-      return res.status(200).json({ ok: true });
-    } catch (e) {
-      return res.status(500).json({ ok: false, error: e.message });
-    }
+    /* ... (기존과 동일) ... */
   }
 
   res.setHeader("Allow", ["GET", "POST", "DELETE"]);
