@@ -1,4 +1,4 @@
-// /public/js/plan-v3.js — 최종 수정본 (내신 플랜 미리보기 기능 추가)
+// /public/js/plan-v3.js — 최종 수정본 (내신 플랜 자동 미리보기 적용)
 
 const $ = (q) => document.querySelector(q);
 const $$ = (q) => document.querySelectorAll(q);
@@ -205,9 +205,10 @@ function attachEventListeners() {
   $("#btnAddNewExamPlan").onclick = showExamPlanEditorForNewPlan;
   $("#btnAddExamBook").onclick = addBookToExamLane;
   $("#btnSaveExamPlan").onclick = saveExamPlan;
-  // ▼▼▼ [추가] 내신 플랜 미리보기 버튼 이벤트 리스너 ▼▼▼
-  $("#btnPreviewExamPlan").onclick = previewExamPlan;
-  // ▲▲▲ [추가] 내신 플랜 미리보기 버튼 이벤트 리스너 ▲▲▲
+  // ▼▼▼ [수정] 내신 플랜 에디터의 날짜 변경 시 자동 미리보기 실행 ▼▼▼
+  $("#examStartDate").onchange = triggerExamPreview;
+  $("#examEndDate").onchange = triggerExamPreview;
+  // ▲▲▲ [수정] 내신 플랜 에디터의 날짜 변경 시 자동 미리보기 실행 ▲▲▲
 }
 
 function renderDaySelector() {
@@ -1368,6 +1369,7 @@ async function onExamSchoolOrGradeChange() {
   actionsEl.style.display = "none";
   editorEl.style.display = "none";
   $("#existingExamPlans").innerHTML = "";
+  $("#result").innerHTML = "왼쪽에서 학생을 선택하고 플랜을 설정해주세요."; // 미리보기 초기화
 
   if (!school || !grade) return;
 
@@ -1425,6 +1427,7 @@ function showExamPlanEditorForNewPlan() {
   $("#examPlanActions").style.display = "none";
   $("#examPlanEditor").style.display = "block";
   $("#btnSaveExamPlan").textContent = "새 내신 플랜 저장";
+  triggerExamPreview(); // 에디터가 열릴 때 바로 미리보기 실행
 }
 
 /** 내신 플랜 교재 추가 UI의 카테고리/교재 목록을 렌더링합니다. */
@@ -1558,6 +1561,7 @@ async function addBookToExamLane() {
     title,
   });
   renderAllExamLanes();
+  triggerExamPreview(); // 교재 추가 시 자동 미리보기
 }
 
 /** 내신 플랜 레인에서 교재를 삭제합니다. */
@@ -1566,25 +1570,26 @@ window.removeBookFromExamLane = (lane, instanceId) => {
     (b) => b.instanceId !== instanceId
   );
   renderAllExamLanes();
+  triggerExamPreview(); // 교재 삭제 시 자동 미리보기
 };
 
-// ▼▼▼ [추가] 내신 플랜 미리보기 함수 ▼▼▼
-async function previewExamPlan() {
+// ▼▼▼ [수정] 미리보기 함수를 debounce로 감싸서 성능 최적화 ▼▼▼
+const triggerExamPreview = debounce(async () => {
   const school = $("#examSchoolSelector").value;
   const grade = $("#examGradeSelector").value;
-  if (!school || !grade)
-    return alert("미리보기를 할 대상 학교와 학년을 선택하세요.");
+  if (!school || !grade) return;
 
   const targetStudents = state.allStudents.filter(
     (s) => s.school === school && String(s.grade) === String(grade)
   );
   if (targetStudents.length === 0) {
-    return alert(
-      "미리보기를 할 학생이 없습니다. 다른 학교/학년을 선택해주세요."
-    );
+    $(
+      "#result"
+    ).innerHTML = `<div class="muted" style="padding:16px;">미리보기를 할 학생이 없습니다.</div>`;
+    return;
   }
 
-  const representativeStudent = targetStudents[0]; // 첫 번째 학생을 기준으로 미리보기 생성
+  const representativeStudent = targetStudents[0];
   const studentClass = state.allClasses.find(
     (c) => c.id === representativeStudent.class_id
   );
@@ -1592,16 +1597,37 @@ async function previewExamPlan() {
 
   const startDate = $("#examStartDate").value;
   const endDate = $("#examEndDate").value;
-  if (!startDate || !endDate) return alert("시작/끝 날짜를 선택하세요.");
+  if (!startDate || !endDate || startDate > endDate) {
+    $(
+      "#result"
+    ).innerHTML = `<div class="muted" style="padding:16px;">올바른 기간을 선택하세요.</div>`;
+    return;
+  }
 
-  const lanes = state.examPlanLanes;
+  const lanes = {
+    main1: state.examPlanLanes.main1.map((b) => ({
+      materialId: b.materialId,
+      startUnitCode: null,
+      endUnitCode: null,
+    })),
+    main2: state.examPlanLanes.main2.map((b) => ({
+      materialId: b.materialId,
+      startUnitCode: null,
+      endUnitCode: null,
+    })),
+    vocab: state.examPlanLanes.vocab.map((b) => ({
+      materialId: b.materialId,
+      startUnitCode: null,
+      endUnitCode: null,
+    })),
+  };
 
   const body = {
     startDate,
     endDate,
     days: studentScheduleDays,
     lanes,
-    userSkips: [], // 내신 미리보기에서는 개인 결석 미적용
+    userSkips: [],
     events: state.allEvents,
     studentInfo: representativeStudent,
   };
@@ -1622,14 +1648,11 @@ async function previewExamPlan() {
       startDate,
       endDate,
     });
-
-    // 미리보기 결과가 보이도록 스크롤 이동
-    $("#result").scrollIntoView({ behavior: "smooth" });
   } catch (e) {
     $("#result").textContent = `미리보기 생성 실패: ${e.message}`;
   }
-}
-// ▲▲▲ [추가] 내신 플랜 미리보기 함수 ▲▲▲
+}, 500);
+// ▲▲▲ [수정] 미리보기 함수를 debounce로 감싸서 성능 최적화 ▲▲▲
 
 /** 내신 플랜을 서버에 저장합니다. */
 async function saveExamPlan() {
