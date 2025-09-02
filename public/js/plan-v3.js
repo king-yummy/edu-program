@@ -41,6 +41,8 @@ const state = {
   currentEventMonth: new Date(),
 };
 
+// --- (이 아래부터 boot() 함수 전까지 기존 코드와 동일) ---
+
 const triggerPreview = debounce(async () => {
   if (!state.selectedStudent) return;
   const allItems = [];
@@ -100,7 +102,6 @@ function updatePlanSegmentDetails() {
     const lastSegment = state.planSegments[state.planSegments.length - 1];
     lastSegment.endDate = $("#endDate").value;
 
-    // [수정] customDays input 대신 selectedDays Set에서 값을 가져옴
     const newDays = [...state.selectedDays].join(",") || "MON,WED,FRI";
 
     for (const segment of state.planSegments) {
@@ -134,7 +135,9 @@ async function boot() {
     renderEvents();
     attachEventListeners();
     attachModalEventListeners();
-    renderScopedEventInputs();
+    // [수정] 초기 렌더링 호출
+    renderScopedEventInputs("event");
+    renderScopedEventInputs("supplementary");
   } catch (e) {
     console.error("초기화 실패:", e);
     alert(`페이지를 불러오는 데 실패했습니다: ${e.message}`);
@@ -142,8 +145,24 @@ async function boot() {
 }
 
 function attachEventListeners() {
-  $("#btnAddEventAll").onclick = () => addEvent("all");
-  $("#btnAddEventScoped").onclick = () => addEvent("scoped");
+  // ▼▼▼ [수정] 이벤트 리스너 변경 및 추가 ▼▼▼
+  $("#btnAddEvent").onclick = () => addEventOrSup("event");
+  $("#btnAddSupplementary").onclick = () => addEventOrSup("supplementary");
+
+  $$(".tab-button").forEach((button) => {
+    button.onclick = () => {
+      const tabId = button.dataset.tab;
+      $$(".tab-button").forEach((btn) => btn.classList.remove("active"));
+      $$(".tab-content").forEach((content) =>
+        content.classList.remove("active")
+      );
+      button.classList.add("active");
+      $(
+        `#tabContent${tabId.charAt(0).toUpperCase() + tabId.slice(1)}`
+      ).classList.add("active");
+    };
+  });
+
   $("#studentSearchInput").oninput = (e) => renderStudentList(e.target.value);
   $("#btnAddNewPlan").onclick = showPlanEditorForNewPlan;
   $("#selMaterialCategory").onchange = renderMaterialOptions;
@@ -154,8 +173,6 @@ function attachEventListeners() {
   $("#startDate").onchange = updatePlanSegmentDetails;
   $("#endDate").onchange = updatePlanSegmentDetails;
 
-  // [삭제] $("#customDays").oninput = updatePlanSegmentDetails;
-
   $("#btnPrevMonth").onclick = () => {
     state.currentEventMonth.setMonth(state.currentEventMonth.getMonth() - 1);
     renderEvents();
@@ -164,9 +181,11 @@ function attachEventListeners() {
     state.currentEventMonth.setMonth(state.currentEventMonth.getMonth() + 1);
     renderEvents();
   };
-  $("#eventScope").onchange = renderScopedEventInputs;
 
-  // [추가] 요일 선택 버튼 이벤트 리스너
+  $("#eventScope").onchange = () => renderScopedEventInputs("event");
+  $("#supScope").onchange = () => renderScopedEventInputs("supplementary");
+  // ▲▲▲ [수정] 이벤트 리스너 변경 및 추가 ▲▲▲
+
   $$("#daySelector button").forEach((btn) => {
     btn.onclick = () => {
       const day = btn.dataset.day;
@@ -176,7 +195,7 @@ function attachEventListeners() {
         state.selectedDays.add(day);
       }
       renderDaySelector();
-      updatePlanSegmentDetails(); // 변경 시 바로 미리보기 업데이트
+      updatePlanSegmentDetails();
     };
   });
 }
@@ -191,6 +210,7 @@ function renderDaySelector() {
   });
 }
 
+// ▼▼▼ [수정] renderEvents 함수 수정 ▼▼▼
 function renderEvents() {
   const year = state.currentEventMonth.getFullYear();
   const month = state.currentEventMonth.getMonth() + 1;
@@ -204,69 +224,79 @@ function renderEvents() {
     listEl.innerHTML = `<div class="muted">해당 월에 등록된 이벤트가 없습니다.</div>`;
     return;
   }
-  const scopeMap = { all: "전체", school: "학교", grade: "학년", class: "반" };
+  const scopeMap = {
+    all: "전체",
+    school: "학교",
+    grade: "학년",
+    class: "반",
+    school_grade: "학교/학년",
+  };
   listEl.innerHTML = filteredEvents
     .sort((a, b) => a.date.localeCompare(b.date))
-    .map(
-      (event) => `
+    .map((event) => {
+      const isSup = event.type === "supplementary";
+      const badge = isSup
+        ? `<span class="pill" style="background: #e0f2fe; color: var(--brand2);">보강</span>`
+        : `<span class="pill">이벤트</span>`;
+      return `
         <div class="list-item" style="display:flex; justify-content:space-between; align-items:center;">
-            <span>[${scopeMap[event.scope] || "기타"}${
+            <span>${badge} [${scopeMap[event.scope] || "기타"}${
         event.scopeValue ? `:${event.scopeValue}` : ""
       }] ${event.date}: ${event.title}</span>
             <button class="btn-xs" style="background:#ef4444" onclick="deleteEvent('${
               event.id
             }')">삭제</button>
-        </div>
-    `
-    )
+        </div>`;
+    })
     .join("");
 }
+// ▲▲▲ [수정] renderEvents 함수 수정 ▲▲▲
 
-async function addEvent(type) {
-  const isAll = type === "all";
-  const date = $(isAll ? "#eventDateAll" : "#eventDateScoped").value;
-  const title = $(isAll ? "#eventTitleAll" : "#eventTitleScoped").value.trim();
-  const scope = isAll ? "all" : $("#eventScope").value;
+// ▼▼▼ [수정] addEvent → addEventOrSup 함수로 통합 및 수정 ▼▼▼
+async function addEventOrSup(type) {
+  const isSup = type === "supplementary";
+  const prefix = isSup ? "sup" : "event";
 
-  // ▼▼▼ [교체] scopeValue를 가져오는 부분을 아래 코드로 교체하세요. ▼▼▼
+  const date = $(`#${prefix}Date`).value;
+  const title = $(`#${prefix}Title`).value.trim();
+  const scope = $(`#${prefix}Scope`).value;
+  const applyTo = isSup
+    ? "all"
+    : document.querySelector('input[name="applyTo"]:checked').value;
+
   let scopeValue = "";
-  if (!isAll) {
-    const inputs = $$(
-      "#scopedValueContainer select, #scopedValueContainer input"
-    );
-    if (scope === "school_grade" && inputs.length === 2) {
-      // 학교 및 학년별: "학교이름:학년" 형태로 값을 조합
-      scopeValue = `${inputs[0].value}:${inputs[1].value}`;
-    } else if (inputs.length > 0) {
-      scopeValue = (inputs[0].value || "").trim();
-    }
+  const container = $(`#${isSup ? "sup" : ""}ScopedValueContainer`);
+  const inputs = container.querySelectorAll("select, input");
+
+  if (scope === "school_grade" && inputs.length === 2) {
+    scopeValue = `${inputs[0].value}:${inputs[1].value}`;
+  } else if (inputs.length > 0) {
+    scopeValue = (inputs[0].value || "").trim();
   }
-  // ▲▲▲ [교체] 여기까지 ▲▲▲
 
   if (!date || !title) return alert("날짜와 내용을 입력하세요.");
-  if (!isAll && !scopeValue)
+  if (scope !== "all" && !scopeValue)
     return alert("부분 설정 값을 선택하거나 입력하세요.");
+
   try {
     const { event } = await api("/api/events", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ date, title, scope, scopeValue }),
+      body: JSON.stringify({ date, title, scope, scopeValue, type, applyTo }),
     });
     state.allEvents.push(event);
     renderEvents();
-    $(isAll ? "#eventDateAll" : "#eventDateScoped").value = "";
-    $(isAll ? "#eventTitleAll" : "#eventTitleScoped").value = "";
-    if (!isAll) {
-      const input = $(
-        "#scopedValueContainer select, #scopedValueContainer input"
-      )[0];
-      if (input) input.value = "";
+    $(`#${prefix}Date`).value = "";
+    $(`#${prefix}Title`).value = "";
+    if (scope !== "all" && inputs.length > 0) {
+      inputs.forEach((input) => (input.value = ""));
     }
     triggerPreview();
   } catch (e) {
-    alert(`이벤트 추가 실패: ${e.message}`);
+    alert(`추가 실패: ${e.message}`);
   }
 }
+// ▲▲▲ [수정] addEvent → addEventOrSup 함수로 통합 및 수정 ▲▲▲
 
 async function deleteEvent(eventId) {
   if (!confirm("정말 이 이벤트를 삭제하시겠습니까?")) return;
@@ -281,12 +311,16 @@ async function deleteEvent(eventId) {
 }
 window.deleteEvent = deleteEvent;
 
-function renderScopedEventInputs() {
-  const scope = $("#eventScope").value;
-  const container = $("#scopedValueContainer");
-  container.innerHTML = ""; // 컨테이너 초기화
+// ▼▼▼ [수정] renderScopedEventInputs 함수 수정 ▼▼▼
+function renderScopedEventInputs(type) {
+  const isSup = type === "supplementary";
+  const prefix = isSup ? "sup" : "event";
 
-  let options = [];
+  const scope = $(`#${prefix}Scope`).value;
+  const container = $(`#${isSup ? "sup" : ""}ScopedValueContainer`);
+  container.innerHTML = "";
+
+  if (scope === "all") return;
 
   const createSelect = (opts, placeholder) => {
     const el = document.createElement("select");
@@ -296,46 +330,51 @@ function renderScopedEventInputs() {
   };
 
   if (scope === "school" || scope === "grade" || scope === "class") {
-    let selectHTML = "";
+    let options;
     if (scope === "school") {
       options = [
         ...new Set(state.allStudents.map((s) => s.school).filter(Boolean)),
       ];
-      selectHTML = options
-        .map((o) => `<option value="${o}">${o}</option>`)
-        .join("");
-      container.appendChild(createSelect(selectHTML, "학교 선택"));
+      container.appendChild(
+        createSelect(
+          options.map((o) => `<option value="${o}">${o}</option>`).join(""),
+          "학교 선택"
+        )
+      );
     } else if (scope === "grade") {
       options = [
         ...new Set(
           state.allStudents.map((s) => String(s.grade)).filter(Boolean)
         ),
       ].sort();
-      selectHTML = options
-        .map((o) => `<option value="${o}">${o}학년</option>`)
-        .join("");
-      container.appendChild(createSelect(selectHTML, "학년 선택"));
-    } else if (scope === "class") {
+      container.appendChild(
+        createSelect(
+          options.map((o) => `<option value="${o}">${o}학년</option>`).join(""),
+          "학년 선택"
+        )
+      );
+    } else {
       options = state.allClasses;
-      selectHTML = options
-        .map((o) => `<option value="${o.id}">${o.name}</option>`)
-        .join("");
-      container.appendChild(createSelect(selectHTML, "반 선택"));
+      container.appendChild(
+        createSelect(
+          options
+            .map((o) => `<option value="${o.id}">${o.name}</option>`)
+            .join(""),
+          "반 선택"
+        )
+      );
     }
   } else if (scope === "school_grade") {
-    // 1. 학교 선택 드롭다운 생성
     const schoolOptions = [
       ...new Set(state.allStudents.map((s) => s.school).filter(Boolean)),
     ];
-    const schoolSelectHTML = schoolOptions
-      .map((o) => `<option value="${o}">${o}</option>`)
-      .join("");
-    const schoolSelect = createSelect(schoolSelectHTML, "학교 먼저 선택");
+    const schoolSelect = createSelect(
+      schoolOptions.map((o) => `<option value="${o}">${o}</option>`).join(""),
+      "학교 먼저 선택"
+    );
     container.appendChild(schoolSelect);
 
-    // 2. 학교 선택 시, 학년 드롭다운을 동적으로 생성
     schoolSelect.onchange = () => {
-      // 기존 학년 드롭다운이 있다면 제거
       if (container.children.length > 1) {
         container.removeChild(container.lastChild);
       }
@@ -350,16 +389,19 @@ function renderScopedEventInputs() {
             .filter(Boolean)
         ),
       ].sort();
-
-      const gradeSelectHTML = gradeOptions
-        .map((o) => `<option value="${o}">${o}학년</option>`)
-        .join("");
-      const gradeSelect = createSelect(gradeSelectHTML, "학년 선택");
+      const gradeSelect = createSelect(
+        gradeOptions
+          .map((o) => `<option value="${o}">${o}학년</option>`)
+          .join(""),
+        "학년 선택"
+      );
       container.appendChild(gradeSelect);
     };
   }
 }
+// ▲▲▲ [수정] renderScopedEventInputs 함수 수정 ▲▲▲
 
+// --- (이 아래부터는 기존 코드와 동일) ---
 function renderStudentList(searchTerm = "") {
   const filtered = searchTerm
     ? state.allStudents.filter((s) =>
@@ -438,7 +480,6 @@ function showPlanEditorForNewPlan() {
         ?.schedule_days || "MON,WED,FRI"
     : "MON,WED,FRI";
 
-  // [수정] 기본 요일을 state에 설정하고 버튼 UI를 렌더링
   state.selectedDays = new Set(
     defaultSchedule
       .split(",")
@@ -632,6 +673,12 @@ function mergeAdjacentSegments() {
   }
   merged.push(current);
   state.planSegments = merged;
+}
+
+function getNextDay(dateStr) {
+  const date = new Date(dateStr);
+  date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString().slice(0, 10);
 }
 
 function renderMaterialOptions() {
@@ -865,8 +912,6 @@ async function addBookToLane() {
       exitInsertionMode();
     }
   } else {
-    // ▼▼▼ 수정된 부분 ▼▼▼
-    // 플랜의 가장 마지막 구간을 선택하도록 변경합니다.
     const segment =
       state.planSegments.length > 0
         ? state.planSegments[state.planSegments.length - 1]
@@ -949,12 +994,6 @@ async function getPlanItems(startDate, endDate, segment) {
 function getPreviousDay(dateStr) {
   const date = new Date(dateStr);
   date.setUTCDate(date.getUTCDate() - 1);
-  return date.toISOString().slice(0, 10);
-}
-
-function getNextDay(dateStr) {
-  const date = new Date(dateStr);
-  date.setUTCDate(date.getUTCDate() + 1);
   return date.toISOString().slice(0, 10);
 }
 
@@ -1081,7 +1120,6 @@ async function loadPlanForEditing(planId) {
     $("#endDate").value =
       state.planSegments[state.planSegments.length - 1].endDate;
 
-    // [수정] 불러온 플랜의 요일 정보를 파싱하여 버튼 UI에 반영
     const days = state.planSegments[0].days || "";
     state.selectedDays = new Set(
       days
@@ -1264,23 +1302,15 @@ function renderPrintable(items, ctx) {
 }
 
 function prepareAndPrint() {
-  // 1. 이전에 추가했을 수 있는 페이지 나누기 클래스를 모두 제거합니다.
   $$(".page-break-after").forEach((el) =>
     el.classList.remove("page-break-after")
   );
-
-  // 2. 미리보기 테이블에 있는 모든 날짜 행을 가져옵니다.
   const rows = $$("#result .table tbody tr");
-  const ROWS_PER_PAGE = 50; // 페이지당 행 개수 (조정 가능)
-
-  // 3. 50번째 행마다 페이지 나누기 클래스를 추가합니다.
+  const ROWS_PER_PAGE = 50;
   rows.forEach((row, index) => {
-    // index는 0부터 시작하므로 +1, 마지막 행에는 추가하지 않음
     if ((index + 1) % ROWS_PER_PAGE === 0 && index < rows.length - 1) {
       row.classList.add("page-break-after");
     }
   });
-
-  // 4. 인쇄 대화상자를 엽니다.
   window.print();
 }

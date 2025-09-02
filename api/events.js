@@ -1,4 +1,4 @@
-// /api/events.js — 신규 파일
+// /api/events.js — 수정본
 
 import { kv } from "@vercel/kv";
 
@@ -49,12 +49,20 @@ export default async function handler(req, res) {
   if (req.method === "POST") {
     try {
       const body = req.body;
-      const { date, title, scope, scopeValue } = body;
+      // [수정] type과 applyTo 필드를 추가로 받습니다.
+      const {
+        date,
+        title,
+        scope,
+        scopeValue,
+        type = "event",
+        applyTo = "attending",
+      } = body;
 
-      if (!date || !title || !scope) {
+      if (!date || !title || !scope || !type) {
         return res
           .status(400)
-          .json({ ok: false, error: "date, title, scope가 필요합니다." });
+          .json({ ok: false, error: "date, title, scope, type이 필요합니다." });
       }
 
       const allEvents = await getEvents();
@@ -62,8 +70,10 @@ export default async function handler(req, res) {
         id: `evt_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
         date,
         title,
-        scope, // 'all', 'school', 'grade', 'class'
-        scopeValue: scopeValue || "", // e.g., 'A중학교', '3', 'C-101'
+        scope, // 'all', 'school', 'grade', 'class', 'school_grade'
+        scopeValue: scopeValue || "",
+        type, // 'event' (이벤트) 또는 'supplementary' (보강)
+        applyTo: type === "supplementary" ? "all" : applyTo, // 보강은 항상 'all'
       };
 
       allEvents.push(newEvent);
