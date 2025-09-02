@@ -317,7 +317,12 @@ function renderScopedEventInputs(type) {
   const prefix = isSup ? "sup" : "event";
 
   const scope = $(`#${prefix}Scope`).value;
-  const container = $(`#${isSup ? "sup" : ""}ScopedValueContainer`);
+  // [오류 수정] ID 셀렉터를 정확하게 지정하도록 수정했습니다.
+  const container = $(
+    isSup ? "#supScopedValueContainer" : "#scopedValueContainer"
+  );
+
+  // 이제 container가 null이 아니므로 아래 코드가 정상적으로 실행됩니다.
   container.innerHTML = "";
 
   if (scope === "all") return;
