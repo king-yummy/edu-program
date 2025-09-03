@@ -268,7 +268,7 @@ function renderEvents() {
             <span>${badge} [${scopeMap[event.scope] || "기타"}${
         event.scopeValue ? `:${event.scopeValue}` : ""
       }] ${event.date}: ${event.title}</span>
-            <button class="btn-xs" style="background:#ef4444" onclick="deleteEvent('${
+            <button class="btn-xs btn-danger" onclick="deleteEvent('${
               event.id
             }')">삭제</button>
         </div>`;
@@ -485,8 +485,8 @@ function renderExistingPlans() {
         <div class="plan-list-item">
             <span>플랜 (${startDate} ~ ${endDate})</span>
             <div>
-                <button class="btn-xs" onclick="loadPlanForEditing('${p.planId}')">수정</button>
-                <button class="btn-xs" style="background:#ef4444" onclick="deletePlan('${p.planId}')">삭제</button>
+                <button class="btn-xs btn-secondary" onclick="loadPlanForEditing('${p.planId}')">수정</button>
+                <button class="btn-xs btn-danger" onclick="deletePlan('${p.planId}')">삭제</button>
             </div>
         </div>`;
     })
@@ -601,7 +601,7 @@ function renderAllLanes() {
               <select data-type="end" data-instance-id="${instanceId}">${endOptions}</select>
             </div>
           </div>
-          <button class="btn-xs" style="background:#ef4444; width:auto; margin-top:8px;" onclick="removeFromLane('${instanceId}')">삭제</button>
+          <button class="btn-xs btn-danger" style="width:auto; margin-top:8px;" onclick="removeFromLane('${instanceId}')">삭제</button>
       </div>`;
     laneContents[bookGroup.lane] += cardHTML;
   }
@@ -1488,12 +1488,8 @@ function renderExistingExamPlans() {
         p.startDate
       } ~ ${p.endDate})</span>
             <div>
-                <button class="btn-xs" onclick="loadExamPlanForEditing('${
-                  p.id
-                }')">수정</button>
-                <button class="btn-xs" style="background:#ef4444" onclick="deleteExamPlan('${
-                  p.id
-                }', '${school}', '${grade}')">삭제</button>
+                <button class="btn-xs btn-secondary" onclick="loadExamPlanForEditing('${p.id}')">수정</button>
+                <button class="btn-xs btn-danger" onclick="deleteExamPlan('${p.id}', '${school}', '${grade}')">삭제</button>
             </div>
         </div>`
     )
@@ -1641,7 +1637,7 @@ function renderExamLane(lane) {
       (b) => `
       <div class="book-card">
           <b>${b.title}</b>
-          <button class="btn-xs" style="background:#ef4444; float: right;" onclick="removeBookFromExamLane('${lane}','${b.instanceId}')">삭제</button>
+          <button class="btn-xs btn-danger" style="float: right;" onclick="removeBookFromExamLane('${lane}','${b.instanceId}')">삭제</button>
       </div>`
     )
     .join("");

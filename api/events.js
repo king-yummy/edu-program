@@ -1,32 +1,7 @@
-// /api/events.js — 수정본
+// /api/events.js — 수정 후
 
-import { kv } from "@vercel/kv";
-
-const EVENTS_KEY = "edu:events";
-
-// KV가 준비되었는지 확인
-function isKvReady() {
-  return !!(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
-}
-
-// 모든 이벤트를 가져오는 함수
-async function getEvents() {
-  if (!isKvReady()) return [];
-  try {
-    return (await kv.get(EVENTS_KEY)) || [];
-  } catch (e) {
-    console.error("KV read error for events:", e);
-    return [];
-  }
-}
-
-// 모든 이벤트를 저장하는 함수
-async function saveEvents(events) {
-  if (!isKvReady()) {
-    throw new Error("저장 기능(KV 데이터베이스)이 설정되지 않았습니다.");
-  }
-  await kv.set(EVENTS_KEY, events);
-}
+// [수정] lib/kv.js에서 중앙 관리 함수를 가져옵니다.
+import { getEvents, saveEvents, isKvReady } from "../lib/kv.js";
 
 export default async function handler(req, res) {
   if (!isKvReady()) {
@@ -49,7 +24,6 @@ export default async function handler(req, res) {
   if (req.method === "POST") {
     try {
       const body = req.body;
-      // [수정] type과 applyTo 필드를 추가로 받습니다.
       const {
         date,
         title,
@@ -70,10 +44,10 @@ export default async function handler(req, res) {
         id: `evt_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
         date,
         title,
-        scope, // 'all', 'school', 'grade', 'class', 'school_grade'
+        scope,
         scopeValue: scopeValue || "",
-        type, // 'event' (이벤트) 또는 'supplementary' (보강)
-        applyTo: type === "supplementary" ? "all" : applyTo, // 보강은 항상 'all'
+        type,
+        applyTo: type === "supplementary" ? "all" : applyTo,
       };
 
       allEvents.push(newEvent);
