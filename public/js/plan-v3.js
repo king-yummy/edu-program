@@ -432,12 +432,21 @@ function renderStudentList(searchTerm = "") {
         s.name.toLowerCase().includes(searchTerm.toLowerCase())
       )
     : state.allStudents;
+
+  // ▼▼▼ [수정] map 내부 로직 변경 ▼▼▼
   $("#studentList").innerHTML = filtered
-    .map(
-      (s) =>
-        `<label><input type="radio" name="student" value="${s.id}"> ${s.name} (${s.school} ${s.grade})</label>`
-    )
+    .map((s) => {
+      // 학생의 class_id를 이용해 전체 반 목록(state.allClasses)에서 해당 반 정보를 찾습니다.
+      const studentClass = state.allClasses.find((c) => c.id === s.class_id);
+      // 반 이름이 있으면 사용하고, 없으면 '미배정'으로 표시합니다.
+      const className = studentClass ? studentClass.name : "미배정";
+
+      // 반 이름 - 학생 이름 (학교 학년) 형태로 텍스트를 구성합니다.
+      return `<label><input type="radio" name="student" value="${s.id}"> ${className} - ${s.name} (${s.school} ${s.grade})</label>`;
+    })
     .join("");
+  // ▲▲▲ [수정] 여기까지 ▲▲▲
+
   $$('input[name="student"]').forEach((radio) => {
     radio.onchange = onStudentSelect;
   });
@@ -571,22 +580,38 @@ function renderAllLanes() {
     const dateRanges = bookGroup.segments
       .map((s) => `${s.startDate.slice(5)} ~ ${s.endDate.slice(5)}`)
       .join(", ");
+
+    // ▼▼▼ [수정] 차시 드롭다운 표시 텍스트를 생성하는 로직 변경 ▼▼▼
+    const generateOptionText = (unit) => {
+      if (bookGroup.lane === "vocab") {
+        const lecture = unit.lecture_range || "회차";
+        const vocab = unit.vocab_range || "범위";
+        return `${lecture} (${vocab})`;
+      }
+      return `${unit.lecture_range || unit.lecture || ""} — ${
+        unit.title || ""
+      }`;
+    };
+
     const startOptions = (bookGroup.units || [])
       .map(
         (u) =>
           `<option value="${u.unit_code}" ${
             u.unit_code === firstSegment.startUnitCode ? "selected" : ""
-          }>${u.lecture_range || u.lecture || ""} — ${u.title || ""}</option>`
+          }>${generateOptionText(u)}</option>`
       )
       .join("");
+
     const endOptions = (bookGroup.units || [])
       .map(
         (u) =>
           `<option value="${u.unit_code}" ${
             u.unit_code === lastSegment.endUnitCode ? "selected" : ""
-          }>${u.lecture_range || u.lecture || ""} — ${u.title || ""}</option>`
+          }>${generateOptionText(u)}</option>`
       )
       .join("");
+    // ▲▲▲ [수정] 여기까지 ▲▲▲
+
     const cardHTML = `
       <div class="book-card">
           <div class="muted small" style="padding: 4px; background: #f8fafc;">${dateRanges}</div>
@@ -601,7 +626,7 @@ function renderAllLanes() {
               <select data-type="end" data-instance-id="${instanceId}">${endOptions}</select>
             </div>
           </div>
-          <button class="btn-xs btn-danger" style="width:auto; margin-top:8px;" onclick="removeFromLane('${instanceId}')">삭제</button>
+          <button class="btn-xs" style="background:#ef4444; width:auto; margin-top:8px;" onclick="removeFromLane('${instanceId}')">삭제</button>
       </div>`;
     laneContents[bookGroup.lane] += cardHTML;
   }
@@ -1488,8 +1513,12 @@ function renderExistingExamPlans() {
         p.startDate
       } ~ ${p.endDate})</span>
             <div>
-                <button class="btn-xs btn-secondary" onclick="loadExamPlanForEditing('${p.id}')">수정</button>
-                <button class="btn-xs btn-danger" onclick="deleteExamPlan('${p.id}', '${school}', '${grade}')">삭제</button>
+                <button class="btn-xs btn-secondary" onclick="loadExamPlanForEditing('${
+                  p.id
+                }')">수정</button>
+                <button class="btn-xs btn-danger" onclick="deleteExamPlan('${
+                  p.id
+                }', '${school}', '${grade}')">삭제</button>
             </div>
         </div>`
     )

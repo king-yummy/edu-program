@@ -332,3 +332,20 @@ button {
   background-color: #ede9fe;
   color: #1e293b !important;
 }
+
+/* --- [추가] 학생 선택 리스트 UI 개선 --- */
+#studentList label {
+  display: block;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+#studentList label:hover {
+  background: #f1f5f9;
+}
+
+#studentList input[type="radio"] {
+  margin-right: 8px;
+  vertical-align: middle;
+}
