@@ -1299,25 +1299,25 @@ function renderPrintable(items, ctx, targetSelector) {
       prevM1Id = m1Id;
       prevM2Id = m2Id;
 
-      // ▼▼▼ [수정] 강조 스타일을 적용할지 결정하는 로직 추가 ▼▼▼
+      // ▼▼▼ [수정] 강조 스타일을 적용할지 결정하는 로직 ▼▼▼
       let specialPeriodClass = "";
       if (isExamPreview) {
         specialPeriodClass = "special-period";
       } else {
         const segment = getSegmentForDate(d);
+        // segment.id가 존재하고, "seg_exam_"으로 시작하거나 "_insertion"을 포함하는지 정확히 확인
         if (
           segment &&
-          segment.id &&
+          typeof segment.id === "string" &&
           (segment.id.startsWith("seg_exam_") ||
             segment.id.includes("_insertion"))
         ) {
           specialPeriodClass = "special-period";
         }
       }
-      // ▲▲▲ 여기까지 추가 ▲▲▲
+      // ▲▲▲ 여기까지 수정 ▲▲▲
 
       if (skip) {
-        // ▼▼▼ [수정] specialPeriodClass를 tr의 class에 추가 ▼▼▼
         return `<tr class="${rowClass} ${specialPeriodClass}" ${tag}><td class="date-column section-divider">${dateString}</td><td colspan="12" style="color:#64748b;background:#f8fafc;">${skip.reason}</td></tr>`;
       }
       const renderMainLane = (mainItem) => {
@@ -1346,7 +1346,6 @@ function renderPrintable(items, ctx, targetSelector) {
         "</td>".repeat(4) + '<td class="section-divider">'
       );
 
-      // ▼▼▼ [수정] specialPeriodClass를 tr의 class에 추가 ▼▼▼
       return `<tr class="${rowClass} ${specialPeriodClass}" ${tag}>
                 <td class="date-column section-divider">${dateString}</td>
                 ${m1Html}
