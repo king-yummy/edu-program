@@ -710,9 +710,7 @@ window.removeFromLane = (instanceId) => {
       );
     }
   }
-  state.planSegments = state.planSegments.filter((s) =>
-    Object.values(s.lanes).some((lane) => lane.length > 0)
-  );
+
   mergeAdjacentSegments();
   renderAllLanes();
   document.dispatchEvent(new Event("renderLanesComplete"));
@@ -1279,7 +1277,6 @@ function renderPrintable(items, ctx, targetSelector) {
 
   const dates = [...new Set(items.map((i) => i.date))].sort();
 
-  // ▼▼▼ [수정] 학생 상세 정보를 포함하고 레이아웃을 위한 div를 추가한 헤더 생성 ▼▼▼
   let studentHeader = "";
   if (isExamPreview) {
     studentHeader = `<div class="student-header">
@@ -1297,7 +1294,6 @@ function renderPrintable(items, ctx, targetSelector) {
                         <div class="info">플랜 기간: ${ctx.startDate} ~ ${ctx.endDate}</div>
                       </div>`;
   }
-  // ▲▲▲ 여기까지 수정 ▲▲▲
 
   const instructionText =
     targetSelector === "#result"
@@ -1385,6 +1381,8 @@ function renderPrintable(items, ctx, targetSelector) {
       if (skip) {
         return `<tr class="${rowClass} ${specialPeriodClass}" ${tag}><td class="date-column section-divider">${dateString}</td><td colspan="12" style="color:#64748b;background:#f8fafc;">${skip.reason}</td></tr>`;
       }
+
+      // ▼▼▼ [수정] 아래 함수의 칼럼 순서를 바로잡았습니다. ▼▼▼
       const renderMainLane = (mainItem) => {
         if (!mainItem) return `<td></td>`.repeat(5);
         const title =
@@ -1401,6 +1399,7 @@ function renderPrintable(items, ctx, targetSelector) {
           mainItem.dt_vocab || ""
         }</td><td>${mainItem.key_sents || ""}</td>`;
       };
+      // ▲▲▲ [수정] 여기까지 ▲▲▲
 
       const m1Html = renderMainLane(m1).replace(
         /(<\/td>\s*){5}$/,
