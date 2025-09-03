@@ -1772,6 +1772,8 @@ async function saveExamPlan() {
       alert("내신 플랜이 성공적으로 저장되고, 대상 학생들에게 적용되었습니다.");
     }
 
+    triggerPreview();
+
     state.editingExamPlanId = null;
     $("#examPlanEditor").style.display = "none";
     onExamSchoolOrGradeChange();
@@ -1799,6 +1801,9 @@ window.deleteExamPlan = async (examPlanId, school, grade) => {
       }
     );
     alert("내신 플랜이 삭제되었습니다.");
+
+    triggerPreview();
+
     onExamSchoolOrGradeChange();
   } catch (e) {
     alert(`삭제 실패: ${e.message}`);
