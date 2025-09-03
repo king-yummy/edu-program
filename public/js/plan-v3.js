@@ -431,21 +431,46 @@ function renderStudentList(searchTerm = "") {
     ? state.allStudents.filter((s) =>
         s.name.toLowerCase().includes(searchTerm.toLowerCase())
       )
-    : state.allStudents;
+    : [...state.allStudents]; // 정렬을 위해 원본 배열의 복사본을 만듭니다.
 
-  // ▼▼▼ [수정] map 내부 로직 변경 ▼▼▼
+  // ▼▼▼ [추가] 정렬 로직 시작 ▼▼▼
+
+  // 1. class 시트의 id 순서대로 반의 정렬 순서를 정합니다. ('C1', 'C2', 'C10' 순서 보장)
+  const classOrder = state.allClasses
+    .slice() // 원본 훼손 방지를 위한 복사
+    .sort((a, b) => {
+      const numA = parseInt(a.id.replace(/\D/g, ""), 10);
+      const numB = parseInt(b.id.replace(/\D/g, ""), 10);
+      return numA - numB;
+    })
+    .reduce((acc, cls, index) => {
+      acc[cls.id] = index; // 각 class_id에 순번을 매깁니다. (예: { C1: 0, C2: 1, ... })
+      return acc;
+    }, {});
+
+  // 2. 학생 목록을 정렬합니다.
+  filtered.sort((a, b) => {
+    // 위에서 정한 반 순서를 가져옵니다. 반이 없는 학생은 맨 뒤로 보냅니다.
+    const orderA = classOrder[a.class_id] ?? 999;
+    const orderB = classOrder[b.class_id] ?? 999;
+
+    if (orderA !== orderB) {
+      // 1순위: 반 순서대로 정렬
+      return orderA - orderB;
+    }
+    // 2순위: 같은 반 내에서는 학생 이름 가나다순으로 정렬
+    return a.name.localeCompare(b.name);
+  });
+  // ▲▲▲ [추가] 정렬 로직 끝 ▲▲▲
+
   $("#studentList").innerHTML = filtered
     .map((s) => {
-      // 학생의 class_id를 이용해 전체 반 목록(state.allClasses)에서 해당 반 정보를 찾습니다.
       const studentClass = state.allClasses.find((c) => c.id === s.class_id);
-      // 반 이름이 있으면 사용하고, 없으면 '미배정'으로 표시합니다.
       const className = studentClass ? studentClass.name : "미배정";
 
-      // 반 이름 - 학생 이름 (학교 학년) 형태로 텍스트를 구성합니다.
       return `<label><input type="radio" name="student" value="${s.id}"> ${className} - ${s.name} (${s.school} ${s.grade})</label>`;
     })
     .join("");
-  // ▲▲▲ [수정] 여기까지 ▲▲▲
 
   $$('input[name="student"]').forEach((radio) => {
     radio.onchange = onStudentSelect;
