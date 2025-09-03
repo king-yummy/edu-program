@@ -1228,9 +1228,21 @@ function renderPrintable(items, ctx, targetSelector) {
   };
 
   const dates = [...new Set(items.map((i) => i.date))].sort();
-  const studentHeader = `<div class="student-header">${ctx.studentNames.join(
-    ", "
-  )} / ${ctx.startDate} ~ ${ctx.endDate}</div>`;
+
+  // ▼▼▼ [수정] 학생 상세 정보를 포함하는 헤더 생성 ▼▼▼
+  let studentHeader = "";
+  if (isExamPreview) {
+    studentHeader = `<div class="student-header">${ctx.studentNames.join(
+      ", "
+    )}<div class="info">플랜 기간: ${ctx.startDate} ~ ${
+      ctx.endDate
+    }</div></div>`;
+  } else if (state.selectedStudent) {
+    const s = state.selectedStudent;
+    studentHeader = `<div class="student-header">${s.name} <span style="font-weight:normal">(${s.school} ${s.grade}학년)</span><div class="info">플랜 기간: ${ctx.startDate} ~ ${ctx.endDate}</div></div>`;
+  }
+  // ▲▲▲ 여기까지 수정 ▲▲▲
+
   const instructionText =
     targetSelector === "#result"
       ? `
@@ -1260,34 +1272,11 @@ function renderPrintable(items, ctx, targetSelector) {
     )
     .join("")}</div>`;
   const thead = `
-    <thead style="font-size: 12px;">
-      <tr>
-        <th rowspan="3" class="section-divider date-column" style="vertical-align: middle;">날짜</th>
-        <th colspan="5" class="header-main1">메인 1</th>
-        <th colspan="5" class="section-divider header-main2">메인 2</th>
-        <th colspan="2" class="header-vocab">단어 DT</th>
-      </tr>
-      <tr>
-        <th colspan="3" class="header-main1">수업 진도</th>
-        <th colspan="2" class="header-main1">티칭 챌린지</th>
-        <th colspan="3" class="header-main2">수업 진도</th>
-        <th colspan="2" class="section-divider header-main2">티칭 챌린지</th>
-        <th rowspan="2" class="header-vocab" style="vertical-align: middle;">회차</th>
-        <th rowspan="2" class="header-vocab" style="vertical-align: middle;">DT</th>
-      </tr>
-      <tr>
-        <th class="header-main1">인강</th>
-        <th class="header-main1">교재 page</th>
-        <th class="header-main1">WB</th>
-        <th class="header-main1">개념+단어</th>
-        <th class="header-main1">문장학습</th>
-        <th class="header-main2">인강</th>
-        <th class="header-main2">교재 page</th>
-        <th class="header-main2">WB</th>
-        <th class="header-main2">개념+단어</th>
-        <th class="section-divider header-main2">문장학습</th>
-      </tr>
-    </thead>`;
+      <thead style="font-size: 12px;">
+        <tr><th rowspan="3" class="section-divider date-column" style="vertical-align: middle;">날짜</th><th colspan="5" class="header-main1">메인 1</th> <th colspan="5" class="section-divider header-main2">메인 2</th> <th colspan="2" class="header-vocab">단어 DT</th></tr>
+        <tr><th colspan="3" class="header-main1">수업 진도</th> <th colspan="2" class="header-main1">티칭 챌린지</th><th colspan="3" class="header-main2">수업 진도</th> <th colspan="2" class="section-divider header-main2">티칭 챌린지</th><th rowspan="2" class="header-vocab" style="vertical-align: middle;">회차</th> <th rowspan="2" class="header-vocab" style="vertical-align: middle;">DT</th></tr>
+        <tr><th class="header-main1">인강</th><th class="header-main1">교재 page</th><th class="header-main1">WB</th><th class="header-main1">개념+단어</th><th class="header-main1">문장학습</th><th class="header-main2">인강</th><th class="header-main2">교재 page</th><th class="header-main2">WB</th><th class="header-main2">개념+단어</th><th class="section-divider header-main2">문장학습</th></tr>
+      </thead>`;
   let prevM1Id = null;
   let prevM2Id = null;
   const rows = dates
@@ -1322,13 +1311,11 @@ function renderPrintable(items, ctx, targetSelector) {
       prevM1Id = m1Id;
       prevM2Id = m2Id;
 
-      // ▼▼▼ [수정] 강조 스타일을 적용할지 결정하는 로직 ▼▼▼
       let specialPeriodClass = "";
       if (isExamPreview) {
         specialPeriodClass = "special-period";
       } else {
         const segment = getSegmentForDate(d);
-        // segment.id가 존재하고, "seg_exam_"으로 시작하거나 "_insertion"을 포함하는지 정확히 확인
         if (
           segment &&
           typeof segment.id === "string" &&
@@ -1338,7 +1325,6 @@ function renderPrintable(items, ctx, targetSelector) {
           specialPeriodClass = "special-period";
         }
       }
-      // ▲▲▲ 여기까지 수정 ▲▲▲
 
       if (skip) {
         return `<tr class="${rowClass} ${specialPeriodClass}" ${tag}><td class="date-column section-divider">${dateString}</td><td colspan="12" style="color:#64748b;background:#f8fafc;">${skip.reason}</td></tr>`;

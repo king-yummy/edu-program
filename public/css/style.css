@@ -216,10 +216,27 @@ button {
     padding: 0;
   }
 
+  /* 학생 정보 헤더 스타일 */
+  .student-header {
+    font-size: 14px;
+    font-weight: bold;
+    margin-bottom: 10px;
+    padding: 10px;
+    border: 2px solid #334155;
+    border-radius: 8px;
+    background-color: #f1f5f9;
+  }
+  .student-header .info {
+    font-size: 11px;
+    font-weight: normal;
+    color: #475569;
+  }
+
+  /* 교재 정보 박스 스타일 */
   .materials-header {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: 6px;
     margin-bottom: 10px;
     padding-bottom: 10px;
     border-bottom: 1px solid #ccc;
@@ -229,7 +246,7 @@ button {
     background: #f0f0f0;
     border-radius: 8px;
     padding: 4px 8px;
-    flex: 1 1 auto;
+    flex: 1 1 150px;
   }
   .material-title {
     font-weight: bold;
@@ -239,11 +256,6 @@ button {
     font-size: 7.5px;
     color: #333;
   }
-  .student-header {
-    font-size: 14px;
-    font-weight: bold;
-    margin-bottom: 10px;
-  }
 
   .table {
     width: 100%;
@@ -251,16 +263,18 @@ button {
     table-layout: fixed;
   }
 
+  /* 표 헤더 글자 크기 축소 */
   .table th {
-    padding: 2px 3px;
-    font-size: 8px;
+    padding: 2px;
+    font-size: 7.5px;
     border: 1px solid #ccc;
     font-weight: bold;
+    word-break: keep-all;
   }
 
   .table tbody td {
     padding: 2px 3px;
-    font-size: 7.5px; /* 표 내부 텍스트 크기 축소 */
+    font-size: 7.5px;
     border: 1px solid #ccc;
     word-break: break-all;
     text-align: center;
@@ -268,11 +282,11 @@ button {
   }
 
   .table .date-column {
-    width: 65px; /* 날짜 칼럼 폭 축소 */
+    width: 65px;
   }
 
   .lecture-text {
-    font-weight: bold; /* 인강 텍스트 굵게 */
+    font-weight: bold;
   }
 
   .page-break-after {
@@ -280,42 +294,34 @@ button {
   }
 }
 
-/* --- [수정] 내신 및 삽입 기간 강조 스타일 (전체 테두리 적용) --- */
+/* --- 내신 및 삽입 기간 강조 스타일 (전체 테두리 적용) --- */
 .table tr.special-period td {
-  background-color: #fffbe6; /* 배경색 */
+  background-color: #fffbe6;
 }
-
-/* 좌/우 테두리 */
 .table tr.special-period td:first-child {
   border-left: 3px solid #f97316;
 }
 .table tr.special-period td:last-child {
   border-right: 3px solid #f97316;
 }
-
-/* 상단 테두리: 강조 기간 블록의 첫 번째 행에만 적용 */
 .table thead + tbody tr.special-period:first-child td,
 .table tr:not(.special-period) + tr.special-period td {
   border-top: 3px solid #f97316;
 }
-
-/* 하단 테두리: 강조 기간 블록의 마지막 행에만 적용 */
 .table tr.special-period:not(:has(+ tr.special-period)) td {
   border-bottom: 3px solid #f97316;
 }
 
-/* --- [추가] 미리보기 헤더 색상 스타일 --- */
+/* --- 미리보기 헤더 색상 스타일 --- */
 .table thead .header-main1 {
-  background-color: #e0f2fe; /* 파스텔 블루 */
-  color: #1e293b !important; /* 텍스트 검정 */
+  background-color: #e0f2fe;
+  color: #1e293b !important;
 }
-
 .table thead .header-main2 {
-  background-color: #dcfce7; /* 파스텔 그린 */
-  color: #1e293b !important; /* 텍스트 검정 */
+  background-color: #dcfce7;
+  color: #1e293b !important;
 }
-
 .table thead .header-vocab {
-  background-color: #ede9fe; /* 파스텔 바이올렛 */
-  color: #1e293b !important; /* 텍스트 검정 */
+  background-color: #ede9fe;
+  color: #1e293b !important;
 }
