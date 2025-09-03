@@ -172,7 +172,7 @@ button {
 }
 
 @media print {
-  /* --- 인쇄 전용 스타일 (v4) --- */
+  /* --- 인쇄 전용 스타일 (v4 최종 수정본) --- */
 
   @page {
     size: A4;
@@ -184,13 +184,15 @@ button {
     print-color-adjust: exact;
   }
 
+  /* ▼▼▼ [수정] #examPlanHeader 추가하여 인쇄 시 숨김 ▼▼▼ */
   body > .nav,
   .config-panel,
   .event-section,
   .no-print,
   .print-hide,
   #insertionControls,
-  .card-h {
+  .card-h,
+  #examPlanHeader {
     display: none !important;
   }
 
@@ -216,7 +218,6 @@ button {
     padding: 0;
   }
 
-  /* 학생 정보 헤더 스타일 */
   .student-header {
     font-size: 14px;
     font-weight: bold;
@@ -232,7 +233,7 @@ button {
     color: #475569;
   }
 
-  /* 교재 정보 박스 스타일 */
+  /* ▼▼▼ [수정] 교재 정보 박스 스타일 최적화 ▼▼▼ */
   .materials-header {
     display: flex;
     flex-wrap: wrap;
@@ -243,18 +244,21 @@ button {
   }
 
   .material-item {
-    background: #f0f0f0;
-    border-radius: 8px;
-    padding: 4px 8px;
-    flex: 1 1 150px;
+    background: #f1f5f9;
+    border-radius: 6px;
+    padding: 3px 6px;
+    flex: 1 1 140px; /* 한 줄에 4개 이상 표시되도록 너비 조정 */
+    border: 1px solid #e2e8f0;
   }
   .material-title {
     font-weight: bold;
-    font-size: 8px;
+    font-size: 7.5px;
+    color: #000;
   }
   .material-lecture {
-    font-size: 7.5px;
-    color: #333;
+    font-size: 7px;
+    color: #000;
+    font-weight: bold;
   }
 
   .table {
@@ -263,13 +267,13 @@ button {
     table-layout: fixed;
   }
 
-  /* 표 헤더 글자 크기 축소 */
+  /* ▼▼▼ [수정] 표 헤더 글자 크기 추가 축소 ▼▼▼ */
   .table th {
     padding: 2px;
-    font-size: 7.5px;
+    font-size: 7px;
     border: 1px solid #ccc;
     font-weight: bold;
-    word-break: keep-all;
+    vertical-align: middle;
   }
 
   .table tbody td {
@@ -294,7 +298,7 @@ button {
   }
 }
 
-/* --- 내신 및 삽입 기간 강조 스타일 (전체 테두리 적용) --- */
+/* --- 내신 및 삽입 기간 강조 스타일 --- */
 .table tr.special-period td {
   background-color: #fffbe6;
 }
