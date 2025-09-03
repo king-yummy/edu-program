@@ -76,10 +76,12 @@
       }
       .table th,
       .table td {
-        font-size: 14px;
-        padding: 12px 10px; /* 상하 여백을 8px -> 12px로 늘림 */
+        border-right: 1px solid var(--border);
         border-bottom: 1px solid var(--border);
-        text-align: left;
+        padding: 6px 8px;
+        font-size: 13px;
+        vertical-align: middle;
+        text-align: center;
       }
       .table th:last-child,
       .table td:last-child {
@@ -345,7 +347,7 @@
           vertical-align: middle;
         }
         .table tbody td {
-          padding: 4px 3px; /* 상하 여백을 2px -> 4px로 늘림 */
+          padding: 3px 3px;
           font-size: 7.5px;
           border: 1px solid #ccc;
           word-break: break-all;
