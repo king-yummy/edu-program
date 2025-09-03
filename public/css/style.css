@@ -280,18 +280,26 @@ button {
   }
 }
 
-/* --- [추가] 내신 및 삽입 기간 강조 스타일 --- */
+/* --- [수정] 내신 및 삽입 기간 강조 스타일 (전체 테두리 적용) --- */
 .table tr.special-period td {
-  /* 연한 주황빛 배경색 */
-  background-color: #fffbe6;
+  background-color: #fffbe6; /* 배경색 */
 }
 
+/* 좌/우 테두리 */
 .table tr.special-period td:first-child {
-  /* 기간의 시작을 알리는 굵은 왼쪽 테두리 */
   border-left: 3px solid #f97316;
 }
-
 .table tr.special-period td:last-child {
-  /* 기간의 끝을 알리는 굵은 오른쪽 테두리 */
   border-right: 3px solid #f97316;
+}
+
+/* 상단 테두리: 강조 기간 블록의 첫 번째 행에만 적용 */
+.table thead + tbody tr.special-period:first-child td,
+.table tr:not(.special-period) + tr.special-period td {
+  border-top: 3px solid #f97316;
+}
+
+/* 하단 테두리: 강조 기간 블록의 마지막 행에만 적용 */
+.table tr.special-period:not(:has(+ tr.special-period)) td {
+  border-bottom: 3px solid #f97316;
 }
