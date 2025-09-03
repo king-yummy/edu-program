@@ -552,29 +552,6 @@
               </div>
 
               <div id="planEditor" style="display: none">
-                <div class="grid2">
-                  <div>
-                    <label>시작일</label>
-                    <input type="date" id="startDate" />
-                  </div>
-                  <div>
-                    <label>종료일</label>
-                    <input type="date" id="endDate" />
-                  </div>
-                </div>
-                <div class="mt">
-                  <label>요일 선택</label>
-                  <div id="daySelector" class="day-selector">
-                    <button data-day="MON">월</button>
-                    <button data-day="TUE">화</button>
-                    <button data-day="WED">수</button>
-                    <button data-day="THU">목</button>
-                    <button data-day="FRI">금</button>
-                    <button data-day="SAT">토</button>
-                    <button data-day="SUN">일</button>
-                  </div>
-                </div>
-
                 <div class="mt">
                   <hr style="border-color: #f1f5f9; margin: 16px 0" />
                   <label>교재 추가</label>
@@ -599,39 +576,24 @@
                       </button>
                     </div>
                   </div>
+
+                  <div id="insertionControls" class="mt" style="display: none">
+                    <button
+                      id="btnInsertMode"
+                      class="btn"
+                      style="
+                        width: 100%;
+                        background-color: #334155;
+                        font-weight: bold;
+                      "
+                    >
+                      📝 선택한 기간에 새 교재 삽입하기
+                    </button>
+                  </div>
                 </div>
 
                 <div id="laneMain1" class="mt"></div>
-                <div id="laneMain2" class="mt"></div>
-                <div id="laneVocab" class="mt"></div>
-
-                <div class="row mt" style="margin-top: 20px">
-                  <button
-                    class="btn no-print"
-                    id="btnSave"
-                    style="background: #10b981"
-                  >
-                    저장하기
-                  </button>
-                  <button class="btn no-print" id="btnPrint">PDF로 저장</button>
-                </div>
               </div>
-            </div>
-          </section>
-        </div>
-
-        <div class="preview-panel">
-          <section class="card">
-            <div class="card-h">결과 미리보기</div>
-
-            <div id="insertionControls" class="card-b" style="display: none">
-              <button id="btnInsertMode" class="btn" style="width: 100%">
-                📝 선택한 기간에 새 교재 삽입하기
-              </button>
-            </div>
-
-            <div class="card-b" id="result">
-              왼쪽에서 학생을 선택하고 플랜을 설정해주세요.
             </div>
           </section>
         </div>
