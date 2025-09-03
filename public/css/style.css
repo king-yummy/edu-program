@@ -240,7 +240,7 @@ button {
   .materials-header {
     display: flex;
     flex-wrap: wrap;
-    gap: 4px; /* 간격 최소화 */
+    gap: 2px; /* 간격 최소화 */
     margin-bottom: 8px;
     padding-bottom: 8px;
     border-bottom: 1px solid #ccc;
@@ -249,17 +249,17 @@ button {
   .material-item {
     background: #f1f5f9;
     border-radius: 5px;
-    padding: 2px 4px; /* 패딩 최소화 */
-    flex: 1 1 23%;
+    padding: 2px 3px; /* 패딩 최소화 */
+    flex: 1 1 24%;
     border: 1px solid #e2e8f0;
   }
   .material-title {
     font-weight: bold;
-    font-size: 7px;
+    font-size: 8px;
     color: #000;
   }
   .material-lecture {
-    font-size: 6.5px;
+    font-size: 6px;
     color: #000;
     font-weight: bold;
   }
@@ -273,7 +273,7 @@ button {
   /* 3. 표 헤더 텍스트 깨짐 방지 */
   .table th {
     padding: 2px;
-    font-size: 6.5px; /* 글자 크기 최종 축소 */
+    font-size: 6px; /* 글자 크기 최종 축소 */
     border: 1px solid #ccc;
     font-weight: bold;
     vertical-align: middle;
