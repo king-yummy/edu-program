@@ -1217,6 +1217,16 @@ function deleteSkip() {
 }
 
 function renderPrintable(items, ctx, targetSelector) {
+  // 내신 미리보기인지, 일반 학생 플랜 미리보기인지 판별
+  const isExamPreview = targetSelector === "#examResult";
+
+  const getSegmentForDate = (date) => {
+    if (!state.planSegments || state.planSegments.length === 0) return null;
+    return state.planSegments.find(
+      (seg) => date >= seg.startDate && date <= seg.endDate
+    );
+  };
+
   const dates = [...new Set(items.map((i) => i.date))].sort();
   const studentHeader = `<div class="student-header">${ctx.studentNames.join(
     ", "
@@ -1269,6 +1279,8 @@ function renderPrintable(items, ctx, targetSelector) {
         targetSelector === "#result"
           ? `data-date="${d}" onclick="handleDateClick(event, '${d}')" style="cursor:pointer;"`
           : `data-date="${d}"`;
+
+      let rowClass = "";
       const m1 = dayItems.find(
         (x) => x.source === "main" && x.lane === "main1"
       );
@@ -1276,7 +1288,7 @@ function renderPrintable(items, ctx, targetSelector) {
         (x) => x.source === "main" && x.lane === "main2"
       );
       const v = dayItems.find((x) => x.source === "vocab");
-      let rowClass = "";
+
       const m1Id = m1?.material_id || null;
       const m2Id = m2?.material_id || null;
       if ((prevM1Id && m1Id !== prevM1Id) || (prevM2Id && m2Id !== prevM2Id)) {
@@ -1286,8 +1298,27 @@ function renderPrintable(items, ctx, targetSelector) {
       }
       prevM1Id = m1Id;
       prevM2Id = m2Id;
+
+      // ▼▼▼ [수정] 강조 스타일을 적용할지 결정하는 로직 추가 ▼▼▼
+      let specialPeriodClass = "";
+      if (isExamPreview) {
+        specialPeriodClass = "special-period";
+      } else {
+        const segment = getSegmentForDate(d);
+        if (
+          segment &&
+          segment.id &&
+          (segment.id.startsWith("seg_exam_") ||
+            segment.id.includes("_insertion"))
+        ) {
+          specialPeriodClass = "special-period";
+        }
+      }
+      // ▲▲▲ 여기까지 추가 ▲▲▲
+
       if (skip) {
-        return `<tr class="${rowClass}" ${tag}><td class="date-column section-divider">${dateString}</td><td colspan="12" style="color:#64748b;background:#f8fafc;">${skip.reason}</td></tr>`;
+        // ▼▼▼ [수정] specialPeriodClass를 tr의 class에 추가 ▼▼▼
+        return `<tr class="${rowClass} ${specialPeriodClass}" ${tag}><td class="date-column section-divider">${dateString}</td><td colspan="12" style="color:#64748b;background:#f8fafc;">${skip.reason}</td></tr>`;
       }
       const renderMainLane = (mainItem) => {
         if (!mainItem) return `<td></td>`.repeat(5);
@@ -1315,7 +1346,8 @@ function renderPrintable(items, ctx, targetSelector) {
         "</td>".repeat(4) + '<td class="section-divider">'
       );
 
-      return `<tr class="${rowClass}" ${tag}>
+      // ▼▼▼ [수정] specialPeriodClass를 tr의 class에 추가 ▼▼▼
+      return `<tr class="${rowClass} ${specialPeriodClass}" ${tag}>
                 <td class="date-column section-divider">${dateString}</td>
                 ${m1Html}
                 ${m2Html}
