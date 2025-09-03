@@ -1384,7 +1384,7 @@ function prepareAndPrint() {
     el.classList.remove("page-break-after")
   );
   const rows = $$("#result .table tbody tr");
-  const ROWS_PER_PAGE = 50;
+  const ROWS_PER_PAGE = 55;
   rows.forEach((row, index) => {
     if ((index + 1) % ROWS_PER_PAGE === 0 && index < rows.length - 1) {
       row.classList.add("page-break-after");

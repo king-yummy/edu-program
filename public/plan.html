@@ -63,7 +63,8 @@
         background: #f8fafc;
         border-radius: 12px;
         padding: 12px 16px;
-        flex: 1 1 220px;
+        flex: 0 1 auto; /* 텍스트 길이에 맞춰 너비가 조절되도록 수정 */
+        text-align: center; /* 내부 텍스트 중앙 정렬 */
       }
       .material-title {
         font-weight: bold;
@@ -319,8 +320,9 @@
           background: #f1f5f9;
           border-radius: 5px;
           padding: 2px 3px;
-          flex: 1 1 24%;
+          flex: 0 1 auto; /* 텍스트 길이에 맞춰 너비가 조절되도록 수정 */
           border: 1px solid #e2e8f0;
+          text-align: center; /* 내부 텍스트 중앙 정렬 */
         }
         .material-title {
           font-weight: bold;
