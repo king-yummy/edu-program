@@ -303,3 +303,19 @@ button {
 .table tr.special-period:not(:has(+ tr.special-period)) td {
   border-bottom: 3px solid #f97316;
 }
+
+/* --- [추가] 미리보기 헤더 색상 스타일 --- */
+.table thead .header-main1 {
+  background-color: #e0f2fe; /* 파스텔 블루 */
+  color: #1e293b !important; /* 텍스트 검정 */
+}
+
+.table thead .header-main2 {
+  background-color: #dcfce7; /* 파스텔 그린 */
+  color: #1e293b !important; /* 텍스트 검정 */
+}
+
+.table thead .header-vocab {
+  background-color: #ede9fe; /* 파스텔 바이올렛 */
+  color: #1e293b !important; /* 텍스트 검정 */
+}

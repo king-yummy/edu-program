@@ -1260,11 +1260,34 @@ function renderPrintable(items, ctx, targetSelector) {
     )
     .join("")}</div>`;
   const thead = `
-      <thead style="font-size: 12px;">
-        <tr><th rowspan="3" class="section-divider date-column" style="vertical-align: middle;">날짜</th><th colspan="5">메인 1</th> <th colspan="5" class="section-divider">메인 2</th> <th colspan="2">단어 DT</th></tr>
-        <tr><th colspan="3">수업 진도</th> <th colspan="2">티칭 챌린지</th><th colspan="3">수업 진도</th> <th colspan="2" class="section-divider">티칭 챌린지</th><th rowspan="2" style="vertical-align: middle;">회차</th> <th rowspan="2" style="vertical-align: middle;">DT</th></tr>
-        <tr><th>인강</th><th>교재 page</th><th>WB</th><th>개념+단어</th><th>문장학습</th><th>인강</th><th>교재 page</th><th>WB</th><th>개념+단어</th><th class="section-divider">문장학습</th></tr>
-      </thead>`;
+    <thead style="font-size: 12px;">
+      <tr>
+        <th rowspan="3" class="section-divider date-column" style="vertical-align: middle;">날짜</th>
+        <th colspan="5" class="header-main1">메인 1</th>
+        <th colspan="5" class="section-divider header-main2">메인 2</th>
+        <th colspan="2" class="header-vocab">단어 DT</th>
+      </tr>
+      <tr>
+        <th colspan="3" class="header-main1">수업 진도</th>
+        <th colspan="2" class="header-main1">티칭 챌린지</th>
+        <th colspan="3" class="header-main2">수업 진도</th>
+        <th colspan="2" class="section-divider header-main2">티칭 챌린지</th>
+        <th rowspan="2" class="header-vocab" style="vertical-align: middle;">회차</th>
+        <th rowspan="2" class="header-vocab" style="vertical-align: middle;">DT</th>
+      </tr>
+      <tr>
+        <th class="header-main1">인강</th>
+        <th class="header-main1">교재 page</th>
+        <th class="header-main1">WB</th>
+        <th class="header-main1">개념+단어</th>
+        <th class="header-main1">문장학습</th>
+        <th class="header-main2">인강</th>
+        <th class="header-main2">교재 page</th>
+        <th class="header-main2">WB</th>
+        <th class="header-main2">개념+단어</th>
+        <th class="section-divider header-main2">문장학습</th>
+      </tr>
+    </thead>`;
   let prevM1Id = null;
   let prevM2Id = null;
   const rows = dates
