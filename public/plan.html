@@ -62,9 +62,9 @@
       .material-item {
         background: #f8fafc;
         border-radius: 12px;
-        padding: 12px 16px;
-        flex: 0 1 auto; /* 텍스트 길이에 맞춰 너비가 조절되도록 수정 */
-        text-align: center; /* 내부 텍스트 중앙 정렬 */
+        padding: 16px; /* 좌우는 16px, 상하는 12px -> 16px로 늘려 여유 공간 확보 */
+        flex: 0 1 auto;
+        text-align: center;
       }
       .material-title {
         font-weight: bold;
@@ -76,12 +76,10 @@
       }
       .table th,
       .table td {
-        border-right: 1px solid var(--border);
+        font-size: 14px;
+        padding: 12px 10px; /* 상하 여백을 8px -> 12px로 늘림 */
         border-bottom: 1px solid var(--border);
-        padding: 6px 8px;
-        font-size: 13px;
-        vertical-align: middle;
-        text-align: center;
+        text-align: left;
       }
       .table th:last-child,
       .table td:last-child {
@@ -319,10 +317,10 @@
         .material-item {
           background: #f1f5f9;
           border-radius: 5px;
-          padding: 2px 3px;
-          flex: 0 1 auto; /* 텍스트 길이에 맞춰 너비가 조절되도록 수정 */
+          padding: 4px 3px; /* 상하 여백을 2px -> 4px로 늘림 */
+          flex: 0 1 auto;
           border: 1px solid #e2e8f0;
-          text-align: center; /* 내부 텍스트 중앙 정렬 */
+          text-align: center;
         }
         .material-title {
           font-weight: bold;
@@ -347,7 +345,7 @@
           vertical-align: middle;
         }
         .table tbody td {
-          padding: 2px 3px;
+          padding: 4px 3px; /* 상하 여백을 2px -> 4px로 늘림 */
           font-size: 7.5px;
           border: 1px solid #ccc;
           word-break: break-all;
