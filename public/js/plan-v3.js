@@ -1382,7 +1382,6 @@ function renderPrintable(items, ctx, targetSelector) {
         return `<tr class="${rowClass} ${specialPeriodClass}" ${tag}><td class="date-column section-divider">${dateString}</td><td colspan="12" style="color:#64748b;background:#f8fafc;">${skip.reason}</td></tr>`;
       }
 
-      // ▼▼▼ [수정] 아래 함수의 칼럼 순서를 바로잡았습니다. ▼▼▼
       const renderMainLane = (mainItem) => {
         if (!mainItem) return `<td></td>`.repeat(5);
         const title =
@@ -1399,7 +1398,22 @@ function renderPrintable(items, ctx, targetSelector) {
           mainItem.dt_vocab || ""
         }</td><td>${mainItem.key_sents || ""}</td>`;
       };
-      // ▲▲▲ [수정] 여기까지 ▲▲▲
+
+      // ▼▼▼ [추가] 단어(vocab) 레인을 렌더링하는 함수 ▼▼▼
+      const renderVocabLane = (vocabItem) => {
+        if (!vocabItem) return `<td></td><td></td>`;
+        if (vocabItem.isOT) {
+          const title =
+            state.allMaterials.find(
+              (m) => m.material_id === vocabItem.material_id
+            )?.title || vocabItem.material_id;
+          return `<td colspan="2" style="background: #F9FF00; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${title}">${title}</td>`;
+        }
+        return `<td>${vocabItem.lecture_range || ""}</td><td>${
+          vocabItem.vocab_range || ""
+        }</td>`;
+      };
+      // ▲▲▲ [추가] 여기까지 ▲▲▲
 
       const m1Html = renderMainLane(m1).replace(
         /(<\/td>\s*){5}$/,
@@ -1410,13 +1424,16 @@ function renderPrintable(items, ctx, targetSelector) {
         "</td>".repeat(4) + '<td class="section-divider">'
       );
 
+      // ▼▼▼ [수정] 새로 추가한 renderVocabLane 함수를 사용합니다. ▼▼▼
+      const vHtml = renderVocabLane(v);
+
       return `<tr class="${rowClass} ${specialPeriodClass}" ${tag}>
                 <td class="date-column section-divider">${dateString}</td>
                 ${m1Html}
                 ${m2Html}
-                <td>${v?.lecture_range || ""}</td>
-                <td>${v?.vocab_range || ""}</td>
+                ${vHtml}
               </tr>`;
+      // ▲▲▲ [수정] 여기까지 ▲▲▲
     })
     .join("");
   const targetElement = $(targetSelector);
