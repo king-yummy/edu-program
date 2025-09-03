@@ -255,6 +255,12 @@ export default async function handler(req, res) {
       readSheetObjects("vocaBook"),
     ]);
 
+    // ▼▼▼ [수정] ID 생성을 이 위치로 이동하여 한번만 실행되도록 합니다. ▼▼▼
+    const { planData } = req.body;
+    const examRecordId =
+      req.method === "PUT" ? examPlanId : `exam_${Date.now()}`;
+    // ▲▲▲ 수정된 부분 ▲▲▲
+
     // --- PUT 또는 POST 요청에 대한 학생 플랜 업데이트 로직 ---
     for (const student of targetStudents) {
       const studentPlanKey = getStudentPlanKey(student.id);
@@ -279,12 +285,9 @@ export default async function handler(req, res) {
         );
       }
 
-      const { planData } = req.body;
-      const examRecordId =
-        req.method === "PUT" ? examPlanId : `exam_${Date.now()}`;
       const newExamSegment = {
         ...planData,
-        id: `seg_exam_${examRecordId}`,
+        id: `seg_exam_${examRecordId}`, // 외부에서 생성된 ID를 일관되게 사용
         days: studentScheduleDays,
       };
       const newExamStartUtc = toUtcDate(newExamSegment.startDate);
@@ -370,14 +373,12 @@ export default async function handler(req, res) {
 
     // --- 마스터 내신 플랜 목록 업데이트 ---
     if (req.method === "POST") {
-      const { planData } = req.body;
-      const examRecordId = `exam_${Date.now()}`;
+      // ▼▼▼ [수정] 위에서 생성한 동일한 ID를 사용합니다. ▼▼▼
       examPlans.push({ ...planData, id: examRecordId });
       await kv.set(examPlanKey, examPlans);
       return res.status(201).json({ ok: true });
     }
     if (req.method === "PUT") {
-      const { planData } = req.body;
       const planIndex = examPlans.findIndex((p) => p.id === examPlanId);
       examPlans[planIndex] = {
         ...examPlans[planIndex],
