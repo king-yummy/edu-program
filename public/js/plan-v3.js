@@ -1229,17 +1229,23 @@ function renderPrintable(items, ctx, targetSelector) {
 
   const dates = [...new Set(items.map((i) => i.date))].sort();
 
-  // ▼▼▼ [수정] 학생 상세 정보를 포함하는 헤더 생성 ▼▼▼
+  // ▼▼▼ [수정] 학생 상세 정보를 포함하고 레이아웃을 위한 div를 추가한 헤더 생성 ▼▼▼
   let studentHeader = "";
   if (isExamPreview) {
-    studentHeader = `<div class="student-header">${ctx.studentNames.join(
-      ", "
-    )}<div class="info">플랜 기간: ${ctx.startDate} ~ ${
+    studentHeader = `<div class="student-header">
+                        <div class="student-details">${ctx.studentNames.join(
+                          ", "
+                        )}</div>
+                        <div class="info">플랜 기간: ${ctx.startDate} ~ ${
       ctx.endDate
-    }</div></div>`;
+    }</div>
+                      </div>`;
   } else if (state.selectedStudent) {
     const s = state.selectedStudent;
-    studentHeader = `<div class="student-header">${s.name} <span style="font-weight:normal">(${s.school} ${s.grade}학년)</span><div class="info">플랜 기간: ${ctx.startDate} ~ ${ctx.endDate}</div></div>`;
+    studentHeader = `<div class="student-header">
+                        <div class="student-details">${s.name} <span style="font-weight:normal">(${s.school} ${s.grade}학년)</span></div>
+                        <div class="info">플랜 기간: ${ctx.startDate} ~ ${ctx.endDate}</div>
+                      </div>`;
   }
   // ▲▲▲ 여기까지 수정 ▲▲▲
 

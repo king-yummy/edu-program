@@ -183,7 +183,6 @@ button {
     print-color-adjust: exact;
   }
 
-  /* 1. 불필요한 UI 숨기기 ('내신 기간 설정' 제목 포함) */
   body > .nav,
   .config-panel,
   .event-section,
@@ -217,26 +216,31 @@ button {
     padding: 0;
   }
 
+  /* 1. 학생 정보 영역 최적화 */
   .student-header {
-    font-size: 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
     font-weight: bold;
-    margin-bottom: 10px;
-    padding: 10px;
+    margin-bottom: 8px;
+    padding: 8px;
     border: 2px solid #334155;
     border-radius: 8px;
     background-color: #f1f5f9;
   }
   .student-header .info {
-    font-size: 11px;
+    font-size: 10px;
     font-weight: normal;
     color: #475569;
+    text-align: right;
   }
 
   /* 2. 교재 정보란 최적화 */
   .materials-header {
     display: flex;
     flex-wrap: wrap;
-    gap: 5px; /* 간격 축소 */
+    gap: 4px; /* 간격 최소화 */
     margin-bottom: 8px;
     padding-bottom: 8px;
     border-bottom: 1px solid #ccc;
@@ -245,17 +249,17 @@ button {
   .material-item {
     background: #f1f5f9;
     border-radius: 5px;
-    padding: 2px 5px; /* 내부 여백 축소 */
-    flex: 1 1 23%; /* 한 줄에 4개 표시되도록 너비 조정 */
+    padding: 2px 4px; /* 패딩 최소화 */
+    flex: 1 1 23%;
     border: 1px solid #e2e8f0;
   }
   .material-title {
     font-weight: bold;
-    font-size: 7px; /* 글자 크기 축소 */
+    font-size: 7px;
     color: #000;
   }
   .material-lecture {
-    font-size: 6.5px; /* 글자 크기 축소 */
+    font-size: 6.5px;
     color: #000;
     font-weight: bold;
   }
@@ -268,12 +272,11 @@ button {
 
   /* 3. 표 헤더 텍스트 깨짐 방지 */
   .table th {
-    padding: 1px; /* 내부 여백 최소화 */
-    font-size: 6.5px; /* 글자 크기 대폭 축소 */
+    padding: 2px;
+    font-size: 6.5px; /* 글자 크기 최종 축소 */
     border: 1px solid #ccc;
     font-weight: bold;
     vertical-align: middle;
-    white-space: pre-wrap; /* 줄바꿈 허용하되 단어 유지 */
   }
 
   .table tbody td {
