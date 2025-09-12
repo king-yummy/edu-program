@@ -120,11 +120,10 @@ const triggerPreview = debounce(async () => {
   );
 }, 500);
 
-// --- [핵심 수정] updatePlanSegmentDetails 함수 ---
-// 기간 변경 시 서버에 전체 플랜 재구성을 요청하는 로직으로 변경
 async function updatePlanSegmentDetails() {
   if (!state.planSegments.length || !state.selectedStudent) return;
 
+  // 로딩 중임을 사용자에게 알립니다.
   $("#result").innerHTML = "플랜을 새로 계산하고 있습니다...";
 
   try {
@@ -132,67 +131,59 @@ async function updatePlanSegmentDetails() {
     const newEndDate = $("#endDate").value;
     const newDays = [...state.selectedDays].join(",") || "MON,WED,FRI";
 
-    // 서버에 보낼 두 가지 핵심 정보: '일반 교재 목록'과 '고정된 내신 기간'
-    const allRegularBooksByInstanceId = {};
+    // 서버에 보낼 재료들을 준비합니다.
+    const allRegularBooks = {};
     const fixedExamSegments = [];
 
     state.planSegments.forEach((seg) => {
-      // 내신 기간이나 직접 삽입한 기간은 '고정' 처리
       if (seg.id.startsWith("seg_exam_") || seg.id.includes("_insertion")) {
-        fixedExamSegments.push(seg);
+        fixedExamSegments.push(seg); // 내신 플랜 정보
       } else {
-        // 그 외는 '일반 교재'로 분류
         for (const lane in seg.lanes) {
+          // 일반 교재 정보
+          if (!allRegularBooks[lane]) allRegularBooks[lane] = [];
           seg.lanes[lane].forEach((book) => {
-            // 중복을 제거하고 instanceId를 키로 교재 정보를 저장
-            if (!allRegularBooksByInstanceId[book.instanceId]) {
-              allRegularBooksByInstanceId[book.instanceId] = {
-                ...book,
-                lane: lane, // 어느 레인 소속인지도 기록
-              };
+            if (
+              !allRegularBooks[lane].some(
+                (b) => b.instanceId === book.instanceId
+              )
+            ) {
+              allRegularBooks[lane].push(book);
             }
           });
         }
       }
     });
 
-    // 서버에 보내기 위해 lane별로 다시 그룹화
-    const allRegularBooks = { main1: [], main2: [], vocab: [] };
-    for (const book of Object.values(allRegularBooksByInstanceId)) {
-      const { lane, ...bookData } = book;
-      if (allRegularBooks[lane]) {
-        allRegularBooks[lane].push(bookData);
-      }
-    }
-
+    // 서버로 보낼 재료 꾸러미
     const body = {
       newStartDate,
       newEndDate,
       newDays,
-      allRegularBooks, // 모든 일반 교재 정보 (시작/종료 차시 포함)
-      fixedExamSegments, // 모든 내신/삽입 기간 정보
+      allRegularBooks,
+      fixedExamSegments,
     };
 
-    // 서버에 "이 재료들로 플랜을 처음부터 다시 만들어줘!" 라고 요청
+    // 서버에 "이 재료들로 계획표를 완전히 새로 만들어주세요!" 라고 요청합니다.
     const res = await api("/api/rebuild-plan", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
 
-    if (!res.ok) {
+    if (!res.ok)
       throw new Error(res.error || "서버에서 계획 재구성에 실패했습니다.");
-    }
 
-    // 서버가 완벽하게 재구성해준 새로운 플랜으로 교체
+    // 서버가 만들어준 완벽한 새 계획표로 교체합니다.
     state.planSegments = res.newPlanSegments;
 
+    // 새 계획표를 화면에 렌더링하고 미리보기를 실행합니다.
     renderAllLanes();
     document.dispatchEvent(new Event("renderLanesComplete"));
     triggerPreview();
   } catch (e) {
     alert(`플랜 업데이트 실패: ${e.message}`);
-    // 필요 시, 에러 발생 시 이전 상태로 복원하는 로직 추가 가능
+    // 필요하다면 여기에 에러 발생 시 원래 상태로 되돌리는 로직을 추가할 수 있습니다.
   }
 }
 
