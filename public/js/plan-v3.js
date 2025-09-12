@@ -114,19 +114,31 @@ const triggerPreview = debounce(async () => {
   );
 }, 500);
 
+// 기존 함수를 아래의 최종 코드로 교체하세요.
 function updatePlanSegmentDetails() {
   if (!state.planSegments.length || !state.selectedStudent) return;
 
   const newStartDate = $("#startDate").value;
   const newEndDate = $("#endDate").value;
-  const currentStartDate = state.planSegments[0].startDate;
 
-  // 1. 시작일이 얼마나 변경되었는지 일(day) 단위로 계산합니다.
+  // 1. '일반 플랜'만 필터링해서 따로 보관합니다. (내신 플랜 등 고정 플랜은 제외)
+  const regularSegments = state.planSegments.filter(
+    (seg) => !seg.id.startsWith("seg_exam_") && !seg.id.includes("_insertion")
+  );
+
+  // '일반 플랜'이 하나도 없으면 수정을 중단합니다.
+  if (!regularSegments.length) {
+    console.warn("수정할 수 있는 일반 플랜이 없습니다.");
+    return;
+  }
+
+  // 2. 첫 번째 '일반 플랜'의 시작일을 기준으로 날짜 변경량을 계산합니다.
+  const currentStartDate = regularSegments[0].startDate;
   const shiftAmount = dayDiff(currentStartDate, newStartDate);
 
-  // 2. 시작일이 변경되었다면(0이 아니라면), 모든 구간의 시작일과 종료일을 함께 이동시킵니다.
+  // 3. 날짜가 변경되었다면, '일반 플랜'들의 시작일과 종료일만 함께 이동시킵니다.
   if (shiftAmount !== 0) {
-    state.planSegments.forEach((segment) => {
+    regularSegments.forEach((segment) => {
       segment.startDate = toYMD(
         addDays(toUtcDate(segment.startDate), shiftAmount)
       );
@@ -134,12 +146,18 @@ function updatePlanSegmentDetails() {
     });
   }
 
-  // 3. 마지막 구간의 종료일은 UI의 종료일 선택기에 맞춰 최종 설정합니다.
-  //    (전체 기간을 늘리거나 줄이는 경우를 처리)
-  const lastSegment = state.planSegments[state.planSegments.length - 1];
-  lastSegment.endDate = newEndDate;
+  // 4. 전체 플랜의 '마지막' 구간이 '일반 플랜'일 경우에만 UI의 종료일을 적용합니다.
+  const veryLastSegment = state.planSegments[state.planSegments.length - 1];
+  if (regularSegments.includes(veryLastSegment)) {
+    veryLastSegment.endDate = newEndDate;
+  } else {
+    // 마지막 플랜이 내신 플랜 같은 고정 플랜이면, 종료일을 변경하지 않고 경고를 남깁니다.
+    console.warn(
+      "플랜의 마지막이 고정된 내신 플랜이므로 전체 종료일을 변경할 수 없습니다."
+    );
+  }
 
-  // 4. 요일 설정은 모든 구간에 일괄 적용합니다.
+  // 5. 요일 설정은 모든 구간에 일괄 적용합니다.
   const newDays = [...state.selectedDays].join(",") || "MON,WED,FRI";
   for (const segment of state.planSegments) {
     segment.days = newDays;
