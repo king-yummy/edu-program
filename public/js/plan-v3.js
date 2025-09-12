@@ -114,48 +114,50 @@ const triggerPreview = debounce(async () => {
   );
 }, 500);
 
-// 기존 함수를 아래의 최종 코드로 교체하세요.
+// 기존 updatePlanSegmentDetails 함수를 지우고 아래 코드로 교체하세요.
+
 function updatePlanSegmentDetails() {
   if (!state.planSegments.length || !state.selectedStudent) return;
 
   const newStartDate = $("#startDate").value;
   const newEndDate = $("#endDate").value;
 
-  // 1. '일반 플랜'만 필터링해서 따로 보관합니다. (내신 플랜 등 고정 플랜은 제외)
+  // 1. '고정 플랜'(내신, 삽입)과 '일반 플랜'을 명확히 구분합니다.
   const regularSegments = state.planSegments.filter(
     (seg) => !seg.id.startsWith("seg_exam_") && !seg.id.includes("_insertion")
   );
 
-  // '일반 플랜'이 하나도 없으면 수정을 중단합니다.
+  // 수정할 '일반 플랜'이 없으면 아무것도 하지 않습니다.
   if (!regularSegments.length) {
     console.warn("수정할 수 있는 일반 플랜이 없습니다.");
+    // UI를 원래 날짜로 되돌리는 것이 좋습니다.
+    $("#startDate").value = state.planSegments[0].startDate;
+    $("#endDate").value =
+      state.planSegments[state.planSegments.length - 1].endDate;
     return;
   }
 
-  // 2. 첫 번째 '일반 플랜'의 시작일을 기준으로 날짜 변경량을 계산합니다.
+  // 2. 첫 번째 '일반 플랜'을 기준으로 날짜 변경량을 계산합니다.
   const currentStartDate = regularSegments[0].startDate;
   const shiftAmount = dayDiff(currentStartDate, newStartDate);
 
-  // 3. 날짜가 변경되었다면, '일반 플랜'들의 시작일과 종료일만 함께 이동시킵니다.
+  // 3. 날짜가 변경되었다면, '일반 플랜'에만 변경량을 적용하여 이동시킵니다.
+  //    (내신 플랜의 날짜는 절대 바뀌지 않습니다.)
   if (shiftAmount !== 0) {
+    let lastMovedDate = null;
     regularSegments.forEach((segment) => {
       segment.startDate = toYMD(
         addDays(toUtcDate(segment.startDate), shiftAmount)
       );
       segment.endDate = toYMD(addDays(toUtcDate(segment.endDate), shiftAmount));
+      lastMovedDate = segment.endDate;
     });
   }
 
-  // 4. 전체 플랜의 '마지막' 구간이 '일반 플랜'일 경우에만 UI의 종료일을 적용합니다.
-  const veryLastSegment = state.planSegments[state.planSegments.length - 1];
-  if (regularSegments.includes(veryLastSegment)) {
-    veryLastSegment.endDate = newEndDate;
-  } else {
-    // 마지막 플랜이 내신 플랜 같은 고정 플랜이면, 종료일을 변경하지 않고 경고를 남깁니다.
-    console.warn(
-      "플랜의 마지막이 고정된 내신 플랜이므로 전체 종료일을 변경할 수 없습니다."
-    );
-  }
+  // 4. 전체 플랜의 맨 마지막이 '일반 플랜'인 경우에만, UI의 종료일을 적용합니다.
+  //    이렇게 하면 전체 기간을 늘리거나 줄일 수 있습니다.
+  const lastRegularSegment = regularSegments[regularSegments.length - 1];
+  lastRegularSegment.endDate = newEndDate;
 
   // 5. 요일 설정은 모든 구간에 일괄 적용합니다.
   const newDays = [...state.selectedDays].join(",") || "MON,WED,FRI";
