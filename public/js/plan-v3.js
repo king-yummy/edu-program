@@ -114,71 +114,71 @@ const triggerPreview = debounce(async () => {
   );
 }, 500);
 
-// 기존 updatePlanSegmentDetails 함수를 아래의 최종 코드로 완전히 교체하세요.
+// 기존 updatePlanSegmentDetails 함수를 아래 코드로 교체하세요.
 
-function updatePlanSegmentDetails() {
+async function updatePlanSegmentDetails() {
   if (!state.planSegments.length || !state.selectedStudent) return;
 
-  const newStartDate = $("#startDate").value;
-  const newEndDate = $("#endDate").value;
+  // 로딩 인디케이터 시작 (선택사항)
+  $("#result").innerHTML = "플랜을 새로 계산하고 있습니다...";
 
-  const regularSegments = state.planSegments.filter(
-    (seg) => !seg.id.startsWith("seg_exam_") && !seg.id.includes("_insertion")
-  );
+  try {
+    const newStartDate = $("#startDate").value;
+    const newEndDate = $("#endDate").value;
+    const newDays = [...state.selectedDays].join(",") || "MON,WED,FRI";
 
-  if (!regularSegments.length) {
-    console.warn("수정할 수 있는 일반 플랜이 없습니다.");
-    return;
-  }
+    const allRegularBooks = {};
+    const fixedExamSegments = [];
 
-  const currentStartDate = regularSegments[0].startDate;
-  const shiftAmount = dayDiff(currentStartDate, newStartDate);
-
-  // --- 1단계: 일반 플랜들 대략적으로 이동 ---
-  if (shiftAmount !== 0) {
-    regularSegments.forEach((segment) => {
-      segment.startDate = toYMD(
-        addDays(toUtcDate(segment.startDate), shiftAmount)
-      );
-      segment.endDate = toYMD(addDays(toUtcDate(segment.endDate), shiftAmount));
+    state.planSegments.forEach((seg) => {
+      if (seg.id.startsWith("seg_exam_") || seg.id.includes("_insertion")) {
+        fixedExamSegments.push(seg);
+      } else {
+        for (const lane in seg.lanes) {
+          if (!allRegularBooks[lane]) allRegularBooks[lane] = [];
+          seg.lanes[lane].forEach((book) => {
+            if (
+              !allRegularBooks[lane].some(
+                (b) => b.instanceId === book.instanceId
+              )
+            ) {
+              // start/end UnitCode를 포함한 전체 book 정보 저장
+              allRegularBooks[lane].push(book);
+            }
+          });
+        }
+      }
     });
+
+    // 서버에 보낼 재료 꾸러미
+    const body = {
+      newStartDate,
+      newEndDate,
+      newDays,
+      allRegularBooks,
+      fixedExamSegments,
+    };
+
+    // 서버에 "이걸로 새로 만들어줘!" 요청
+    const res = await api("/api/rebuild-plan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok)
+      throw new Error(res.error || "서버에서 계획 재구성에 실패했습니다.");
+
+    // 서버가 만들어준 완벽한 새 계획표로 교체
+    state.planSegments = res.newPlanSegments;
+
+    renderAllLanes();
+    document.dispatchEvent(new Event("renderLanesComplete"));
+    triggerPreview();
+  } catch (e) {
+    alert(`플랜 업데이트 실패: ${e.message}`);
+    // 에러 발생 시 원래 상태로 되돌리는 로직 추가 가능
   }
-
-  const lastRegularSegment = regularSegments[regularSegments.length - 1];
-  lastRegularSegment.endDate = newEndDate;
-
-  // --- 2단계: 고정 플랜 주변의 경계를 정리하여 빈틈 제거 (핵심 해결 로직) ---
-  for (let i = 0; i < state.planSegments.length - 1; i++) {
-    const currentSeg = state.planSegments[i];
-    const nextSeg = state.planSegments[i + 1];
-
-    const isCurrentRegular = regularSegments.includes(currentSeg);
-    const isNextFixed = !regularSegments.includes(nextSeg);
-
-    const isCurrentFixed = !regularSegments.includes(currentSeg);
-    const isNextRegular = regularSegments.includes(nextSeg);
-
-    // CASE 1: 일반 플랜 다음에 고정 플랜이 오는 경우
-    // 일반 플랜의 종료일을 고정 플랜 바로 전날로 붙여줍니다. (A와 기둥 사이의 빈틈 제거)
-    if (isCurrentRegular && isNextFixed) {
-      currentSeg.endDate = toYMD(addDays(toUtcDate(nextSeg.startDate), -1));
-    }
-
-    // CASE 2: 고정 플랜 다음에 일반 플랜이 오는 경우
-    // 일반 플랜의 시작일을 고정 플랜 바로 다음날로 붙여줍니다. (기둥과 B 사이의 빈틈 제거)
-    if (isCurrentFixed && isNextRegular) {
-      nextSeg.startDate = toYMD(addDays(toUtcDate(currentSeg.endDate), 1));
-    }
-  }
-
-  const newDays = [...state.selectedDays].join(",") || "MON,WED,FRI";
-  for (const segment of state.planSegments) {
-    segment.days = newDays;
-  }
-
-  renderAllLanes();
-  document.dispatchEvent(new Event("renderLanesComplete"));
-  triggerPreview();
 }
 
 document.addEventListener("DOMContentLoaded", boot);
