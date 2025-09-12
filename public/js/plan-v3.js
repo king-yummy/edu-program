@@ -45,6 +45,21 @@ const state = {
   examPreviewDays: new Set(), // ◀◀◀ 내신 플랜 미리보기용 요일 상태 추가
 };
 
+const toUtcDate = (d) => {
+  if (!d || typeof d !== "string") return new Date(Date.UTC(1970, 0, 1));
+  const [y, m, day] = d.split("T")[0].split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, day));
+};
+const toYMD = (d) => d.toISOString().slice(0, 10);
+const addDays = (d, n) => {
+  const x = new Date(d);
+  x.setUTCDate(x.getUTCDate() + n);
+  return x;
+};
+const dayDiff = (d1, d2) => {
+  return Math.round((toUtcDate(d2) - toUtcDate(d1)) / (1000 * 60 * 60 * 24));
+};
+
 const triggerPreview = debounce(async () => {
   if (!state.selectedStudent) return;
   const allItems = [];
@@ -100,20 +115,39 @@ const triggerPreview = debounce(async () => {
 }, 500);
 
 function updatePlanSegmentDetails() {
-  if (state.planSegments.length > 0 && state.selectedStudent) {
-    state.planSegments[0].startDate = $("#startDate").value;
-    const lastSegment = state.planSegments[state.planSegments.length - 1];
-    lastSegment.endDate = $("#endDate").value;
+  if (!state.planSegments.length || !state.selectedStudent) return;
 
-    const newDays = [...state.selectedDays].join(",") || "MON,WED,FRI";
+  const newStartDate = $("#startDate").value;
+  const newEndDate = $("#endDate").value;
+  const currentStartDate = state.planSegments[0].startDate;
 
-    for (const segment of state.planSegments) {
-      segment.days = newDays;
-    }
-    renderAllLanes();
-    document.dispatchEvent(new Event("renderLanesComplete"));
-    triggerPreview();
+  // 1. 시작일이 얼마나 변경되었는지 일(day) 단위로 계산합니다.
+  const shiftAmount = dayDiff(currentStartDate, newStartDate);
+
+  // 2. 시작일이 변경되었다면(0이 아니라면), 모든 구간의 시작일과 종료일을 함께 이동시킵니다.
+  if (shiftAmount !== 0) {
+    state.planSegments.forEach((segment) => {
+      segment.startDate = toYMD(
+        addDays(toUtcDate(segment.startDate), shiftAmount)
+      );
+      segment.endDate = toYMD(addDays(toUtcDate(segment.endDate), shiftAmount));
+    });
   }
+
+  // 3. 마지막 구간의 종료일은 UI의 종료일 선택기에 맞춰 최종 설정합니다.
+  //    (전체 기간을 늘리거나 줄이는 경우를 처리)
+  const lastSegment = state.planSegments[state.planSegments.length - 1];
+  lastSegment.endDate = newEndDate;
+
+  // 4. 요일 설정은 모든 구간에 일괄 적용합니다.
+  const newDays = [...state.selectedDays].join(",") || "MON,WED,FRI";
+  for (const segment of state.planSegments) {
+    segment.days = newDays;
+  }
+
+  renderAllLanes();
+  document.dispatchEvent(new Event("renderLanesComplete"));
+  triggerPreview();
 }
 
 document.addEventListener("DOMContentLoaded", boot);
