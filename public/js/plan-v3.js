@@ -1408,8 +1408,8 @@ function renderPrintable(items, ctx, targetSelector) {
       const dayItems = items.filter((x) => x.date === d);
       const skip = dayItems.find((x) => x.source === "skip");
       const DOW_KR = ["일", "월", "화", "수", "목", "금", "토"];
-      const dateObj = dayjs.tz(d, ZONE).toDate();
-      const dayName = DOW_KR[dateObj.getUTCDay()];
+      const dateObj = dayjs.tz(d, "Asia/Seoul");
+      const dayName = DOW_KR[dateObj.day()];
       const dateString = `${d.slice(5).replace(/-/g, ".")} (${dayName})`;
       const tag =
         targetSelector === "#result"
