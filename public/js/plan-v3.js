@@ -114,7 +114,7 @@ const triggerPreview = debounce(async () => {
   );
 }, 500);
 
-// 기존 updatePlanSegmentDetails 함수를 지우고 아래 코드로 교체하세요.
+// 기존 updatePlanSegmentDetails 함수를 아래의 최종 코드로 완전히 교체하세요.
 
 function updatePlanSegmentDetails() {
   if (!state.planSegments.length || !state.selectedStudent) return;
@@ -122,44 +122,55 @@ function updatePlanSegmentDetails() {
   const newStartDate = $("#startDate").value;
   const newEndDate = $("#endDate").value;
 
-  // 1. '고정 플랜'(내신, 삽입)과 '일반 플랜'을 명확히 구분합니다.
   const regularSegments = state.planSegments.filter(
     (seg) => !seg.id.startsWith("seg_exam_") && !seg.id.includes("_insertion")
   );
 
-  // 수정할 '일반 플랜'이 없으면 아무것도 하지 않습니다.
   if (!regularSegments.length) {
     console.warn("수정할 수 있는 일반 플랜이 없습니다.");
-    // UI를 원래 날짜로 되돌리는 것이 좋습니다.
-    $("#startDate").value = state.planSegments[0].startDate;
-    $("#endDate").value =
-      state.planSegments[state.planSegments.length - 1].endDate;
     return;
   }
 
-  // 2. 첫 번째 '일반 플랜'을 기준으로 날짜 변경량을 계산합니다.
   const currentStartDate = regularSegments[0].startDate;
   const shiftAmount = dayDiff(currentStartDate, newStartDate);
 
-  // 3. 날짜가 변경되었다면, '일반 플랜'에만 변경량을 적용하여 이동시킵니다.
-  //    (내신 플랜의 날짜는 절대 바뀌지 않습니다.)
+  // --- 1단계: 일반 플랜들 대략적으로 이동 ---
   if (shiftAmount !== 0) {
-    let lastMovedDate = null;
     regularSegments.forEach((segment) => {
       segment.startDate = toYMD(
         addDays(toUtcDate(segment.startDate), shiftAmount)
       );
       segment.endDate = toYMD(addDays(toUtcDate(segment.endDate), shiftAmount));
-      lastMovedDate = segment.endDate;
     });
   }
 
-  // 4. 전체 플랜의 맨 마지막이 '일반 플랜'인 경우에만, UI의 종료일을 적용합니다.
-  //    이렇게 하면 전체 기간을 늘리거나 줄일 수 있습니다.
   const lastRegularSegment = regularSegments[regularSegments.length - 1];
   lastRegularSegment.endDate = newEndDate;
 
-  // 5. 요일 설정은 모든 구간에 일괄 적용합니다.
+  // --- 2단계: 고정 플랜 주변의 경계를 정리하여 빈틈 제거 (핵심 해결 로직) ---
+  for (let i = 0; i < state.planSegments.length - 1; i++) {
+    const currentSeg = state.planSegments[i];
+    const nextSeg = state.planSegments[i + 1];
+
+    const isCurrentRegular = regularSegments.includes(currentSeg);
+    const isNextFixed = !regularSegments.includes(nextSeg);
+
+    const isCurrentFixed = !regularSegments.includes(currentSeg);
+    const isNextRegular = regularSegments.includes(nextSeg);
+
+    // CASE 1: 일반 플랜 다음에 고정 플랜이 오는 경우
+    // 일반 플랜의 종료일을 고정 플랜 바로 전날로 붙여줍니다. (A와 기둥 사이의 빈틈 제거)
+    if (isCurrentRegular && isNextFixed) {
+      currentSeg.endDate = toYMD(addDays(toUtcDate(nextSeg.startDate), -1));
+    }
+
+    // CASE 2: 고정 플랜 다음에 일반 플랜이 오는 경우
+    // 일반 플랜의 시작일을 고정 플랜 바로 다음날로 붙여줍니다. (기둥과 B 사이의 빈틈 제거)
+    if (isCurrentFixed && isNextRegular) {
+      nextSeg.startDate = toYMD(addDays(toUtcDate(currentSeg.endDate), 1));
+    }
+  }
+
   const newDays = [...state.selectedDays].join(",") || "MON,WED,FRI";
   for (const segment of state.planSegments) {
     segment.days = newDays;
