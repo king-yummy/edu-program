@@ -8,7 +8,8 @@
     "start": "vercel dev"
   },
   "dependencies": {
-    "googleapis": "^127.0.0",
-    "@vercel/kv": "^1.0.1"
+    "@vercel/kv": "^1.0.1",
+    "dayjs": "^1.11.18",
+    "googleapis": "^127.0.0"
   }
 }

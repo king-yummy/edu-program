@@ -1,4 +1,4 @@
-// /public/js/plan-v3.js — 최종 수정본 (내신 플랜 미리보기 요일 선택 기능 추가)
+// /public/js/plan-v3.js
 
 const $ = (q) => document.querySelector(q);
 const $$ = (q) => document.querySelectorAll(q);
@@ -42,22 +42,28 @@ const state = {
   examPlans: [],
   examPlanLanes: { main1: [], main2: [], vocab: [] },
   editingExamPlanId: null,
-  examPreviewDays: new Set(), // ◀◀◀ 내신 플랜 미리보기용 요일 상태 추가
+  examPreviewDays: new Set(),
 };
 
+// --- [수정] 날짜 관련 헬퍼 함수: dayjs를 사용하여 타임존 문제 해결 ---
+const ZONE = "Asia/Seoul"; // 한국 시간 기준
+
 const toUtcDate = (d) => {
-  if (!d || typeof d !== "string") return new Date(Date.UTC(1970, 0, 1));
-  const [y, m, day] = d.split("T")[0].split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, day));
+  // dayjs를 사용하도록 수정하여 안정성 확보
+  if (!d || typeof d !== "string") return dayjs.tz("1970-01-01", ZONE).toDate();
+  return dayjs.tz(d, ZONE).toDate();
 };
-const toYMD = (d) => d.toISOString().slice(0, 10);
+const toYMD = (d) => {
+  // dayjs 객체를 입력받아 'YYYY-MM-DD' 형식으로 변환
+  return d instanceof Date
+    ? dayjs(d).tz(ZONE).format("YYYY-MM-DD")
+    : dayjs.tz(d, ZONE).format("YYYY-MM-DD");
+};
 const addDays = (d, n) => {
-  const x = new Date(d);
-  x.setUTCDate(x.getUTCDate() + n);
-  return x;
+  return dayjs.tz(d, ZONE).add(n, "day").toDate();
 };
 const dayDiff = (d1, d2) => {
-  return Math.round((toUtcDate(d2) - toUtcDate(d1)) / (1000 * 60 * 60 * 24));
+  return dayjs.tz(d2, ZONE).diff(dayjs.tz(d1, ZONE), "day");
 };
 
 const triggerPreview = debounce(async () => {
@@ -114,12 +120,11 @@ const triggerPreview = debounce(async () => {
   );
 }, 500);
 
-// 기존 updatePlanSegmentDetails 함수를 아래 코드로 교체하세요.
-
+// --- [핵심 수정] updatePlanSegmentDetails 함수 ---
+// 기간 변경 시 서버에 전체 플랜 재구성을 요청하는 로직으로 변경
 async function updatePlanSegmentDetails() {
   if (!state.planSegments.length || !state.selectedStudent) return;
 
-  // 로딩 인디케이터 시작 (선택사항)
   $("#result").innerHTML = "플랜을 새로 계산하고 있습니다...";
 
   try {
@@ -127,49 +132,59 @@ async function updatePlanSegmentDetails() {
     const newEndDate = $("#endDate").value;
     const newDays = [...state.selectedDays].join(",") || "MON,WED,FRI";
 
-    const allRegularBooks = {};
+    // 서버에 보낼 두 가지 핵심 정보: '일반 교재 목록'과 '고정된 내신 기간'
+    const allRegularBooksByInstanceId = {};
     const fixedExamSegments = [];
 
     state.planSegments.forEach((seg) => {
+      // 내신 기간이나 직접 삽입한 기간은 '고정' 처리
       if (seg.id.startsWith("seg_exam_") || seg.id.includes("_insertion")) {
         fixedExamSegments.push(seg);
       } else {
+        // 그 외는 '일반 교재'로 분류
         for (const lane in seg.lanes) {
-          if (!allRegularBooks[lane]) allRegularBooks[lane] = [];
           seg.lanes[lane].forEach((book) => {
-            if (
-              !allRegularBooks[lane].some(
-                (b) => b.instanceId === book.instanceId
-              )
-            ) {
-              // start/end UnitCode를 포함한 전체 book 정보 저장
-              allRegularBooks[lane].push(book);
+            // 중복을 제거하고 instanceId를 키로 교재 정보를 저장
+            if (!allRegularBooksByInstanceId[book.instanceId]) {
+              allRegularBooksByInstanceId[book.instanceId] = {
+                ...book,
+                lane: lane, // 어느 레인 소속인지도 기록
+              };
             }
           });
         }
       }
     });
 
-    // 서버에 보낼 재료 꾸러미
+    // 서버에 보내기 위해 lane별로 다시 그룹화
+    const allRegularBooks = { main1: [], main2: [], vocab: [] };
+    for (const book of Object.values(allRegularBooksByInstanceId)) {
+      const { lane, ...bookData } = book;
+      if (allRegularBooks[lane]) {
+        allRegularBooks[lane].push(bookData);
+      }
+    }
+
     const body = {
       newStartDate,
       newEndDate,
       newDays,
-      allRegularBooks,
-      fixedExamSegments,
+      allRegularBooks, // 모든 일반 교재 정보 (시작/종료 차시 포함)
+      fixedExamSegments, // 모든 내신/삽입 기간 정보
     };
 
-    // 서버에 "이걸로 새로 만들어줘!" 요청
+    // 서버에 "이 재료들로 플랜을 처음부터 다시 만들어줘!" 라고 요청
     const res = await api("/api/rebuild-plan", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
 
-    if (!res.ok)
+    if (!res.ok) {
       throw new Error(res.error || "서버에서 계획 재구성에 실패했습니다.");
+    }
 
-    // 서버가 만들어준 완벽한 새 계획표로 교체
+    // 서버가 완벽하게 재구성해준 새로운 플랜으로 교체
     state.planSegments = res.newPlanSegments;
 
     renderAllLanes();
@@ -177,13 +192,23 @@ async function updatePlanSegmentDetails() {
     triggerPreview();
   } catch (e) {
     alert(`플랜 업데이트 실패: ${e.message}`);
-    // 에러 발생 시 원래 상태로 되돌리는 로직 추가 가능
+    // 필요 시, 에러 발생 시 이전 상태로 복원하는 로직 추가 가능
   }
 }
 
 document.addEventListener("DOMContentLoaded", boot);
 
 async function boot() {
+  // dayjs 플러그인 활성화
+  if (window.dayjs_plugin_utc && window.dayjs_plugin_timezone) {
+    dayjs.extend(window.dayjs_plugin_utc);
+    dayjs.extend(window.dayjs_plugin_timezone);
+  } else {
+    console.error(
+      "dayjs 또는 플러그인이 로드되지 않았습니다. HTML 파일을 확인하세요."
+    );
+  }
+
   try {
     const [studentsRes, materialsRes, classesRes, eventsRes] =
       await Promise.all([
@@ -275,7 +300,6 @@ function attachEventListeners() {
   $("#examStartDate").onchange = triggerExamPreview;
   $("#examEndDate").onchange = triggerExamPreview;
 
-  // ▼▼▼ 내신 플랜 미리보기 요일 선택기 이벤트 리스너 추가 ▼▼▼
   $$("#examPreviewDaySelector button").forEach((btn) => {
     btn.onclick = () => {
       const day = btn.dataset.day;
@@ -285,10 +309,9 @@ function attachEventListeners() {
         state.examPreviewDays.add(day);
       }
       renderExamPreviewDaySelector();
-      triggerExamPreview(); // 요일 변경 시 미리보기 자동 갱신
+      triggerExamPreview();
     };
   });
-  // ▲▲▲ 여기까지 추가 ▲▲▲
 }
 
 function renderDaySelector() {
@@ -496,37 +519,29 @@ function renderStudentList(searchTerm = "") {
     ? state.allStudents.filter((s) =>
         s.name.toLowerCase().includes(searchTerm.toLowerCase())
       )
-    : [...state.allStudents]; // 정렬을 위해 원본 배열의 복사본을 만듭니다.
+    : [...state.allStudents];
 
-  // ▼▼▼ [추가] 정렬 로직 시작 ▼▼▼
-
-  // 1. class 시트의 id 순서대로 반의 정렬 순서를 정합니다. ('C1', 'C2', 'C10' 순서 보장)
   const classOrder = state.allClasses
-    .slice() // 원본 훼손 방지를 위한 복사
+    .slice()
     .sort((a, b) => {
       const numA = parseInt(a.id.replace(/\D/g, ""), 10);
       const numB = parseInt(b.id.replace(/\D/g, ""), 10);
       return numA - numB;
     })
     .reduce((acc, cls, index) => {
-      acc[cls.id] = index; // 각 class_id에 순번을 매깁니다. (예: { C1: 0, C2: 1, ... })
+      acc[cls.id] = index;
       return acc;
     }, {});
 
-  // 2. 학생 목록을 정렬합니다.
   filtered.sort((a, b) => {
-    // 위에서 정한 반 순서를 가져옵니다. 반이 없는 학생은 맨 뒤로 보냅니다.
     const orderA = classOrder[a.class_id] ?? 999;
     const orderB = classOrder[b.class_id] ?? 999;
 
     if (orderA !== orderB) {
-      // 1순위: 반 순서대로 정렬
       return orderA - orderB;
     }
-    // 2순위: 같은 반 내에서는 학생 이름 가나다순으로 정렬
     return a.name.localeCompare(b.name);
   });
-  // ▲▲▲ [추가] 정렬 로직 끝 ▲▲▲
 
   $("#studentList").innerHTML = filtered
     .map((s) => {
@@ -594,7 +609,7 @@ function renderExistingPlans() {
 
 function showPlanEditorForNewPlan() {
   state.editingPlanId = null;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = dayjs().tz(ZONE).format("YYYY-MM-DD");
   $("#startDate").value = today;
   $("#endDate").value = today;
 
@@ -671,7 +686,6 @@ function renderAllLanes() {
       .map((s) => `${s.startDate.slice(5)} ~ ${s.endDate.slice(5)}`)
       .join(", ");
 
-    // ▼▼▼ [수정] 차시 드롭다운 표시 텍스트를 생성하는 로직 변경 ▼▼▼
     const generateOptionText = (unit) => {
       if (bookGroup.lane === "vocab") {
         const lecture = unit.lecture_range || "회차";
@@ -700,7 +714,6 @@ function renderAllLanes() {
           }>${generateOptionText(u)}</option>`
       )
       .join("");
-    // ▲▲▲ [수정] 여기까지 ▲▲▲
 
     const cardHTML = `
       <div class="book-card">
@@ -925,10 +938,9 @@ function updateSelectionUI() {
         : "";
   });
   if (state.selectionStart && !state.isInsertionMode) {
-    const start = new Date(state.selectionStart),
-      end = new Date(state.selectionEnd);
-    const diffDays =
-      Math.ceil(Math.abs(end - start) / (1000 * 60 * 60 * 24)) + 1;
+    const start = dayjs.tz(state.selectionStart, ZONE);
+    const end = dayjs.tz(state.selectionEnd, ZONE);
+    const diffDays = end.diff(start, "day") + 1;
     $("#insertionControls").style.display = "block";
     $(
       "#btnInsertMode"
@@ -1123,15 +1135,11 @@ async function getPlanItems(startDate, endDate, segment) {
 }
 
 function getPreviousDay(dateStr) {
-  const date = new Date(dateStr);
-  date.setUTCDate(date.getUTCDate() - 1);
-  return date.toISOString().slice(0, 10);
+  return dayjs.tz(dateStr, ZONE).subtract(1, "day").format("YYYY-MM-DD");
 }
 
 function getNextDay(dateStr) {
-  const date = new Date(dateStr);
-  date.setUTCDate(date.getUTCDate() + 1);
-  return date.toISOString().slice(0, 10);
+  return dayjs.tz(dateStr, ZONE).add(1, "day").format("YYYY-MM-DD");
 }
 
 async function savePlan() {
@@ -1330,7 +1338,6 @@ function deleteSkip() {
 }
 
 function renderPrintable(items, ctx, targetSelector) {
-  // 내신 미리보기인지, 일반 학생 플랜 미리보기인지 판별
   const isExamPreview = targetSelector === "#examResult";
 
   const getSegmentForDate = (date) => {
@@ -1401,7 +1408,7 @@ function renderPrintable(items, ctx, targetSelector) {
       const dayItems = items.filter((x) => x.date === d);
       const skip = dayItems.find((x) => x.source === "skip");
       const DOW_KR = ["일", "월", "화", "수", "목", "금", "토"];
-      const dateObj = new Date(d + "T00:00:00Z");
+      const dateObj = dayjs.tz(d, ZONE).toDate();
       const dayName = DOW_KR[dateObj.getUTCDay()];
       const dateString = `${d.slice(5).replace(/-/g, ".")} (${dayName})`;
       const tag =
@@ -1464,7 +1471,6 @@ function renderPrintable(items, ctx, targetSelector) {
         }</td><td>${mainItem.key_sents || ""}</td>`;
       };
 
-      // ▼▼▼ [추가] 단어(vocab) 레인을 렌더링하는 함수 ▼▼▼
       const renderVocabLane = (vocabItem) => {
         if (!vocabItem) return `<td></td><td></td>`;
         if (vocabItem.isOT) {
@@ -1478,7 +1484,6 @@ function renderPrintable(items, ctx, targetSelector) {
           vocabItem.vocab_range || ""
         }</td>`;
       };
-      // ▲▲▲ [추가] 여기까지 ▲▲▲
 
       const m1Html = renderMainLane(m1).replace(
         /(<\/td>\s*){5}$/,
@@ -1488,8 +1493,6 @@ function renderPrintable(items, ctx, targetSelector) {
         /(<\/td>\s*){5}$/,
         "</td>".repeat(4) + '<td class="section-divider">'
       );
-
-      // ▼▼▼ [수정] 새로 추가한 renderVocabLane 함수를 사용합니다. ▼▼▼
       const vHtml = renderVocabLane(v);
 
       return `<tr class="${rowClass} ${specialPeriodClass}" ${tag}>
@@ -1498,7 +1501,6 @@ function renderPrintable(items, ctx, targetSelector) {
                 ${m2Html}
                 ${vHtml}
               </tr>`;
-      // ▲▲▲ [수정] 여기까지 ▲▲▲
     })
     .join("");
   const targetElement = $(targetSelector);
@@ -1524,7 +1526,6 @@ function prepareAndPrint() {
   window.print();
 }
 
-/** 내신 플랜 섹션의 학교/학년 드롭다운을 렌더링합니다. */
 function renderExamSchoolAndGradeSelectors() {
   const schoolSelector = $("#examSchoolSelector");
   const gradeSelector = $("#examGradeSelector");
@@ -1559,7 +1560,6 @@ function renderExamSchoolAndGradeSelectors() {
   };
 }
 
-/** 학교 또는 학년 선택이 변경되었을 때 내신 플랜 목록을 불러옵니다. */
 async function onExamSchoolOrGradeChange() {
   const school = $("#examSchoolSelector").value;
   const grade = $("#examGradeSelector").value;
@@ -1569,11 +1569,10 @@ async function onExamSchoolOrGradeChange() {
   actionsEl.style.display = "none";
   editorEl.style.display = "none";
   $("#existingExamPlans").innerHTML = "";
-  $("#examResult").innerHTML = "대상을 선택하고 플랜을 설정해주세요."; // 내신 미리보기 초기화
+  $("#examResult").innerHTML = "대상을 선택하고 플랜을 설정해주세요.";
 
   if (!school || !grade) return;
 
-  // ▼▼▼ 대표 학생 요일로 미리보기 요일 선택기 초기화 ▼▼▼
   const representativeStudent = state.allStudents.find(
     (s) => s.school === school && String(s.grade) === String(grade)
   );
@@ -1585,7 +1584,6 @@ async function onExamSchoolOrGradeChange() {
     state.examPreviewDays = new Set(scheduleDays.split(","));
     renderExamPreviewDaySelector();
   }
-  // ▲▲▲ 여기까지 수정 ▲▲▲
 
   actionsEl.style.display = "block";
   try {
@@ -1601,7 +1599,6 @@ async function onExamSchoolOrGradeChange() {
   }
 }
 
-/** 불러온 내신 플랜 목록을 UI에 렌더링합니다. */
 function renderExistingExamPlans() {
   const school = $("#examSchoolSelector").value;
   const grade = $("#examGradeSelector").value;
@@ -1631,7 +1628,6 @@ function renderExistingExamPlans() {
     .join("");
 }
 
-/** [신규] 내신 플랜 수정 버튼 클릭 시 에디터를 로드하는 함수 */
 window.loadExamPlanForEditing = (examPlanId) => {
   const plan = state.examPlans.find((p) => p.id === examPlanId);
   if (!plan) {
@@ -1643,7 +1639,6 @@ window.loadExamPlanForEditing = (examPlanId) => {
   $("#examStartDate").value = plan.startDate;
   $("#examEndDate").value = plan.endDate;
 
-  // lanes 데이터가 없는 구버전 플랜 호환
   state.examPlanLanes = plan.lanes
     ? JSON.parse(JSON.stringify(plan.lanes))
     : { main1: [], main2: [], vocab: [] };
@@ -1655,10 +1650,9 @@ window.loadExamPlanForEditing = (examPlanId) => {
   triggerExamPreview();
 };
 
-/** 새 내신 플랜 만들기 에디터를 표시합니다. */
 function showExamPlanEditorForNewPlan() {
   state.editingExamPlanId = null;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = dayjs().tz(ZONE).format("YYYY-MM-DD");
   $("#examStartDate").value = today;
   $("#examEndDate").value = today;
 
@@ -1668,10 +1662,9 @@ function showExamPlanEditorForNewPlan() {
   $("#examPlanActions").style.display = "none";
   $("#examPlanEditor").style.display = "block";
   $("#btnSaveExamPlan").textContent = "새 내신 플랜 저장";
-  triggerExamPreview(); // 에디터가 열릴 때 바로 미리보기 실행
+  triggerExamPreview();
 }
 
-/** 내신 플랜 교재 추가 UI의 카테고리/교재 목록을 렌더링합니다. */
 function renderExamMaterialOptions() {
   const selCat = $("#examSelMaterialCategory");
   const selSubCat = $("#examSelMaterialSubCategory");
@@ -1752,14 +1745,12 @@ function renderExamMaterialOptions() {
   }
 }
 
-/** 내신 플랜의 모든 교재 레인을 UI에 렌더링합니다. */
 function renderAllExamLanes() {
   renderExamLane("main1");
   renderExamLane("main2");
   renderExamLane("vocab");
 }
 
-/** 내신 플랜의 특정 교재 레인을 UI에 렌더링합니다. */
 function renderExamLane(lane) {
   const box = $(`#examLane${lane.charAt(0).toUpperCase() + lane.slice(1)}`);
   const arr = state.examPlanLanes[lane];
@@ -1778,7 +1769,6 @@ function renderExamLane(lane) {
     .join("");
 }
 
-/** 내신 플랜 레인에 교재를 추가합니다. */
 async function addBookToExamLane() {
   const materialId = $("#examSelMaterial").value;
   const lane = $("#examSelLane").value;
@@ -1802,16 +1792,15 @@ async function addBookToExamLane() {
     title,
   });
   renderAllExamLanes();
-  triggerExamPreview(); // 교재 추가 시 자동 미리보기
+  triggerExamPreview();
 }
 
-/** 내신 플랜 레인에서 교재를 삭제합니다. */
 window.removeBookFromExamLane = (lane, instanceId) => {
   state.examPlanLanes[lane] = state.examPlanLanes[lane].filter(
     (b) => b.instanceId !== instanceId
   );
   renderAllExamLanes();
-  triggerExamPreview(); // 교재 삭제 시 자동 미리보기
+  triggerExamPreview();
 };
 
 const triggerExamPreview = debounce(async () => {
@@ -1831,7 +1820,6 @@ const triggerExamPreview = debounce(async () => {
 
   const representativeStudent = targetStudents[0];
 
-  // ▼▼▼ 고정된 요일 대신 상태 값(state.examPreviewDays) 사용으로 수정 ▼▼▼
   const previewScheduleDays = [...state.examPreviewDays].join(",");
   if (!previewScheduleDays) {
     $(
@@ -1839,7 +1827,6 @@ const triggerExamPreview = debounce(async () => {
     ).innerHTML = `<div class="muted" style="padding:16px;">미리보기를 할 요일을 선택하세요.</div>`;
     return;
   }
-  // ▲▲▲ 여기까지 수정 ▲▲▲
 
   const startDate = $("#examStartDate").value;
   const endDate = $("#examEndDate").value;
@@ -1871,7 +1858,7 @@ const triggerExamPreview = debounce(async () => {
   const body = {
     startDate,
     endDate,
-    days: previewScheduleDays, // ◀◀◀ 수정된 요일 값 사용
+    days: previewScheduleDays,
     lanes,
     userSkips: [],
     events: state.allEvents,
@@ -1903,7 +1890,6 @@ const triggerExamPreview = debounce(async () => {
   }
 }, 500);
 
-/** 내신 플랜을 서버에 저장합니다. (수정/생성 분기 처리) */
 async function saveExamPlan() {
   const school = $("#examSchoolSelector").value;
   const grade = $("#examGradeSelector").value;
@@ -1959,9 +1945,7 @@ async function saveExamPlan() {
   }
 }
 
-/** 내신 플랜을 삭제합니다. */
 window.deleteExamPlan = async (examPlanId, school, grade) => {
-  // [수정] 확인 메시지를 현재 기능에 맞게 변경
   if (
     !confirm(
       "정말 이 내신 플랜을 삭제하시겠습니까?\n대상 학생들의 플랜에서도 해당 내신 기간이 삭제되고, 이후 일정이 조정됩니다. 이 작업은 되돌릴 수 없습니다."
@@ -1987,7 +1971,6 @@ window.deleteExamPlan = async (examPlanId, school, grade) => {
   }
 };
 
-// ▼▼▼ 내신 플랜 미리보기 요일 선택기 UI 렌더링 함수 추가 ▼▼▼
 function renderExamPreviewDaySelector() {
   $$("#examPreviewDaySelector button").forEach((btn) => {
     if (state.examPreviewDays.has(btn.dataset.day)) {
@@ -1997,4 +1980,3 @@ function renderExamPreviewDaySelector() {
     }
   });
 }
-// ▲▲▲ 여기까지 추가 ▲▲▲
