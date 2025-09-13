@@ -366,6 +366,14 @@ button {
 
 /* [신규] 인쇄 시 적용될 스타일 */
 @media print {
+  /* 페이지 자체의 여백을 설정합니다. */
+  @page {
+    margin-top: 0mm;
+    margin-bottom: 0mm;
+    margin-left: 5mm;
+    margin-right: 5mm;
+  }
+
   /* 인쇄 시 숨길 UI 요소들을 지정합니다. */
   .sidebar,
   #planConfig,
