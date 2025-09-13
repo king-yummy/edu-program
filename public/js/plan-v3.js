@@ -1384,10 +1384,20 @@ function renderPrintable(items, ctx, targetSelector) {
         <tr><th colspan="3" class="header-main1">수업 진도</th> <th colspan="2" class="header-main1">티칭 챌린지</th><th colspan="3" class="header-main2">수업 진도</th> <th colspan="2" class="section-divider header-main2">티칭 챌린지</th><th rowspan="2" class="header-vocab" style="vertical-align: middle;">회차</th> <th rowspan="2" class="header-vocab" style="vertical-align: middle;">DT</th></tr>
         <tr><th class="header-main1">인강</th><th class="header-main1">교재 page</th><th class="header-main1">WB</th><th class="header-main1">개념+단어</th><th class="header-main1">문장학습</th><th class="header-main2">인강</th><th class="header-main2">교재 page</th><th class="header-main2">WB</th><th class="header-main2">개념+단어</th><th class="section-divider header-main2">문장학습</th></tr>
       </thead>`;
+
   let prevM1Id = null;
   let prevM2Id = null;
+  let prevVId = null;
+
   const rows = dates
-    .map((d) => {
+    .map((d, index) => {
+      // 첫 날은 항상 교재 정보를 표시하기 위해 이전 ID를 null과 다른 값으로 초기화합니다.
+      if (index === 0) {
+        prevM1Id = `init_${Date.now()}`;
+        prevM2Id = `init_${Date.now()}`;
+        prevVId = `init_${Date.now()}`;
+      }
+
       const dayItems = items.filter((x) => x.date === d);
       const skip = dayItems.find((x) => x.source === "skip");
       const DOW_KR = ["일", "월", "화", "수", "목", "금", "토"];
@@ -1399,7 +1409,6 @@ function renderPrintable(items, ctx, targetSelector) {
           ? `data-date="${d}" onclick="handleDateClick(event, '${d}')" style="cursor:pointer;"`
           : `data-date="${d}"`;
 
-      let rowClass = "";
       const m1 = dayItems.find(
         (x) => x.source === "main" && x.lane === "main1"
       );
@@ -1410,13 +1419,43 @@ function renderPrintable(items, ctx, targetSelector) {
 
       const m1Id = m1?.material_id || null;
       const m2Id = m2?.material_id || null;
-      if ((prevM1Id && m1Id !== prevM1Id) || (prevM2Id && m2Id !== prevM2Id)) {
-        if (prevM1Id || prevM2Id) {
-          rowClass = "book-change-divider";
+      const vId = v?.material_id || null;
+
+      let newBookMessages = [];
+
+      // ▼▼▼ [핵심 수정] OT 여부와 관계 없이 새 교재면 무조건 표시하도록 변경 ▼▼▼
+      const checkNewBook = (item, itemId, prevItemId, laneName) => {
+        // item.isOT 조건을 제거했습니다.
+        if (item && itemId !== prevItemId) {
+          const book = state.allMaterials.find((m) => m.material_id === itemId);
+          if (book) {
+            newBookMessages.push(
+              `<strong>[${laneName}] ${book.title}</strong> 시작`
+            );
+          }
         }
+      };
+
+      checkNewBook(m1, m1Id, prevM1Id, "메인1");
+      checkNewBook(m2, m2Id, prevM2Id, "메인2");
+      checkNewBook(v, vId, prevVId, "어휘");
+
+      let newBookInfoRow = "";
+      if (newBookMessages.length > 0) {
+        newBookInfoRow = `
+          <tr class="book-info-divider">
+            <td class="date-column section-divider">${dateString}</td>
+            <td colspan="12" class="new-book-info">
+              📘 ${newBookMessages.join(" | ")}
+            </td>
+          </tr>
+        `;
       }
+      // ▲▲▲ [핵심 수정] 여기까지 ▲▲▲
+
       prevM1Id = m1Id;
       prevM2Id = m2Id;
+      prevVId = vId;
 
       let specialPeriodClass = "";
       if (isExamPreview) {
@@ -1434,7 +1473,8 @@ function renderPrintable(items, ctx, targetSelector) {
       }
 
       if (skip) {
-        return `<tr class="${rowClass} ${specialPeriodClass}" ${tag}><td class="date-column section-divider">${dateString}</td><td colspan="12" style="color:#64748b;background:#f8fafc;">${skip.reason}</td></tr>`;
+        const regularRowHtml = `<tr class="${specialPeriodClass}" ${tag}><td class="date-column section-divider">${dateString}</td><td colspan="12" style="color:#64748b;background:#f8fafc;">${skip.reason}</td></tr>`;
+        return newBookInfoRow + regularRowHtml;
       }
 
       const renderMainLane = (mainItem) => {
@@ -1478,12 +1518,14 @@ function renderPrintable(items, ctx, targetSelector) {
       );
       const vHtml = renderVocabLane(v);
 
-      return `<tr class="${rowClass} ${specialPeriodClass}" ${tag}>
+      const regularRowHtml = `<tr class="${specialPeriodClass}" ${tag}>
                 <td class="date-column section-divider">${dateString}</td>
                 ${m1Html}
                 ${m2Html}
                 ${vHtml}
               </tr>`;
+
+      return newBookInfoRow + regularRowHtml;
     })
     .join("");
   const targetElement = $(targetSelector);

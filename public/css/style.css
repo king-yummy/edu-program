@@ -348,3 +348,18 @@ button {
 #studentList label:hover {
   background: #f1f5f9;
 }
+
+/* [신규] 새 교재 안내 행 스타일 */
+.book-info-divider td {
+  padding: 0 !important;
+  border: none;
+}
+
+.new-book-info {
+  padding: 6px 12px !important;
+  text-align: center;
+  background-color: #e0f2fe !important; /* A light blue background */
+  color: #0c4a6e; /* A dark blue text color */
+  font-size: 13px;
+  font-weight: 500;
+}
