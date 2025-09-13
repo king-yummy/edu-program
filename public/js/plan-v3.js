@@ -637,8 +637,8 @@ function clearPlanEditor() {
 
 function renderAllLanes() {
   const laneContents = {
-    main1: "<h5>메인 1</h5>",
-    main2: "<h5>메인 2</h5>",
+    main1: "<h5>수업 1</h5>",
+    main2: "<h5>수업 2</h5>",
     vocab: "<h5>어휘</h5>",
   };
   const consolidatedBooks = {};
@@ -1380,7 +1380,7 @@ function renderPrintable(items, ctx, targetSelector) {
     .join("")}</div>`;
   const thead = `
       <thead style="font-size: 12px;">
-        <tr><th rowspan="3" class="section-divider date-column" style="vertical-align: middle;">날짜</th><th colspan="5" class="header-main1">메인 1</th> <th colspan="5" class="section-divider header-main2">메인 2</th> <th colspan="2" class="header-vocab">단어 DT</th></tr>
+        <tr><th rowspan="3" class="section-divider date-column" style="vertical-align: middle;">날짜</th><th colspan="5" class="header-main1">수업 1</th> <th colspan="5" class="section-divider header-main2">수업 2</th> <th colspan="2" class="header-vocab">단어 DT</th></tr>
         <tr><th colspan="3" class="header-main1">수업 진도</th> <th colspan="2" class="header-main1">티칭 챌린지</th><th colspan="3" class="header-main2">수업 진도</th> <th colspan="2" class="section-divider header-main2">티칭 챌린지</th><th rowspan="2" class="header-vocab" style="vertical-align: middle;">회차</th> <th rowspan="2" class="header-vocab" style="vertical-align: middle;">DT</th></tr>
         <tr><th class="header-main1">인강</th><th class="header-main1">교재 page</th><th class="header-main1">WB</th><th class="header-main1">개념+단어</th><th class="header-main1">문장학습</th><th class="header-main2">인강</th><th class="header-main2">교재 page</th><th class="header-main2">WB</th><th class="header-main2">개념+단어</th><th class="section-divider header-main2">문장학습</th></tr>
       </thead>`;
@@ -1420,7 +1420,9 @@ function renderPrintable(items, ctx, targetSelector) {
         if (item && itemId !== prevItemId) {
           const book = state.allMaterials.find((m) => m.material_id === itemId);
           if (book) {
-            newBookMessages.push(`<strong>[${laneName}] ${book.title}</strong> 시작`);
+            newBookMessages.push(
+              `<strong>[${laneName}] ${book.title}</strong> 시작`
+            );
           }
         }
       };
@@ -1441,7 +1443,7 @@ function renderPrintable(items, ctx, targetSelector) {
         `;
       }
       // ▲▲▲ [핵심 수정] 여기까지 ▲▲▲
-      
+
       let specialPeriodClass = "";
       if (isExamPreview) {
         specialPeriodClass = "special-period";
@@ -1456,16 +1458,17 @@ function renderPrintable(items, ctx, targetSelector) {
           specialPeriodClass = "special-period";
         }
       }
-      
-      let regularRowHtml = '';
+
+      let regularRowHtml = "";
       if (skip) {
         regularRowHtml = `<tr class="${specialPeriodClass}" ${tag}><td class="date-column section-divider">${dateString}</td><td colspan="12" style="color:#64748b;background:#f8fafc;">${skip.reason}</td></tr>`;
       } else {
         const renderMainLane = (mainItem) => {
           if (!mainItem) return `<td></td>`.repeat(5);
           const title =
-            state.allMaterials.find((m) => m.material_id === mainItem.material_id)
-              ?.title || mainItem.material_id;
+            state.allMaterials.find(
+              (m) => m.material_id === mainItem.material_id
+            )?.title || mainItem.material_id;
           if (mainItem.isOT)
             return `<td colspan="5" style="background: #F9FF00; font-weight: bold;">"${title}" OT</td>`;
 
@@ -1515,7 +1518,7 @@ function renderPrintable(items, ctx, targetSelector) {
         prevM2Id = m2Id;
         prevVId = vId;
       }
-              
+
       return newBookInfoRow + regularRowHtml;
     })
     .join("");
@@ -1763,8 +1766,8 @@ function renderExamMaterialOptions() {
 
 function renderAllExamLanes() {
   const laneContents = {
-    main1: "<h5>메인 1</h5>",
-    main2: "<h5>메인 2</h5>",
+    main1: "<h5>수업 1</h5>",
+    main2: "<h5>수업 2</h5>",
     vocab: "<h5>어휘</h5>",
   };
 

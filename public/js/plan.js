@@ -511,7 +511,7 @@ function renderPrintable(items, ctx) {
     <thead style="font-size: 12px; text-align: center;">
       <tr>
         <th rowspan="3" style="width:100px; vertical-align: middle;">날짜</th>
-        <th colspan="5">메인 1</th> <th colspan="5">메인 2</th> <th colspan="2">단어 DT</th>
+        <th colspan="5">수업 1</th> <th colspan="5">수업 2</th> <th colspan="2">단어 DT</th>
       </tr>
       <tr>
         <th colspan="3">수업 진도</th> <th colspan="2">티칭 챌린지</th>
