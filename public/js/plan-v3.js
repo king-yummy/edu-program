@@ -1390,7 +1390,7 @@ function renderPrintable(items, ctx, targetSelector) {
   let prevVId = null;
 
   const rows = dates
-    .map((d, index) => {
+    .map((d) => {
       const dayItems = items.filter((x) => x.date === d);
       const skip = dayItems.find((x) => x.source === "skip");
       const DOW_KR = ["일", "월", "화", "수", "목", "금", "토"];
@@ -1420,9 +1420,7 @@ function renderPrintable(items, ctx, targetSelector) {
         if (item && itemId !== prevItemId) {
           const book = state.allMaterials.find((m) => m.material_id === itemId);
           if (book) {
-            newBookMessages.push(
-              `<strong>[${laneName}] ${book.title}</strong> 시작`
-            );
+            newBookMessages.push(`<strong>[${laneName}] ${book.title}</strong> 시작`);
           }
         }
       };
@@ -1431,18 +1429,19 @@ function renderPrintable(items, ctx, targetSelector) {
       checkNewBook(m2, m2Id, prevM2Id, "메인2");
       checkNewBook(v, vId, prevVId, "어휘");
 
+      // ▼▼▼ [핵심 수정] 날짜를 빼고, 전체 칸(colspan="13")을 사용하도록 변경 ▼▼▼
       let newBookInfoRow = "";
       if (newBookMessages.length > 0) {
         newBookInfoRow = `
           <tr class="book-info-divider">
-            <td class="date-column section-divider">${dateString}</td>
-            <td colspan="12" class="new-book-info">
+            <td colspan="13" class="new-book-info">
               📘 ${newBookMessages.join(" | ")}
             </td>
           </tr>
         `;
       }
-
+      // ▲▲▲ [핵심 수정] 여기까지 ▲▲▲
+      
       let specialPeriodClass = "";
       if (isExamPreview) {
         specialPeriodClass = "special-period";
@@ -1457,17 +1456,16 @@ function renderPrintable(items, ctx, targetSelector) {
           specialPeriodClass = "special-period";
         }
       }
-
-      let regularRowHtml = "";
+      
+      let regularRowHtml = '';
       if (skip) {
         regularRowHtml = `<tr class="${specialPeriodClass}" ${tag}><td class="date-column section-divider">${dateString}</td><td colspan="12" style="color:#64748b;background:#f8fafc;">${skip.reason}</td></tr>`;
       } else {
         const renderMainLane = (mainItem) => {
           if (!mainItem) return `<td></td>`.repeat(5);
           const title =
-            state.allMaterials.find(
-              (m) => m.material_id === mainItem.material_id
-            )?.title || mainItem.material_id;
+            state.allMaterials.find((m) => m.material_id === mainItem.material_id)
+              ?.title || mainItem.material_id;
           if (mainItem.isOT)
             return `<td colspan="5" style="background: #F9FF00; font-weight: bold;">"${title}" OT</td>`;
 
@@ -1512,14 +1510,12 @@ function renderPrintable(items, ctx, targetSelector) {
                 </tr>`;
       }
 
-      // ▼▼▼ [핵심 수정] 실제 수업이 있는 날에만 이전 교재 ID를 업데이트합니다. ▼▼▼
       if (!skip) {
         prevM1Id = m1Id;
         prevM2Id = m2Id;
         prevVId = vId;
       }
-      // ▲▲▲ [핵심 수정] 여기까지 ▲▲▲
-
+              
       return newBookInfoRow + regularRowHtml;
     })
     .join("");
