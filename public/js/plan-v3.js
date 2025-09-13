@@ -1,4 +1,4 @@
-// /public/js/plan-v3.js
+// /public/js/plan-v3.js — 진짜 최종 완성본
 
 const $ = (q) => document.querySelector(q);
 const $$ = (q) => document.querySelectorAll(q);
@@ -45,16 +45,17 @@ const state = {
   examPreviewDays: new Set(),
 };
 
-// --- [수정] 날짜 관련 헬퍼 함수: dayjs를 사용하여 타임존 문제 해결 ---
-const ZONE = "Asia/Seoul"; // 한국 시간 기준
+// [신규] 모든 플랜 업데이트를 이 함수 하나로 처리합니다.
+const debouncedUpdatePlan = debounce(updatePlanSegmentDetails, 500);
+
+// --- 날짜 관련 헬퍼 함수 ---
+const ZONE = "Asia/Seoul";
 
 const toUtcDate = (d) => {
-  // dayjs를 사용하도록 수정하여 안정성 확보
   if (!d || typeof d !== "string") return dayjs.tz("1970-01-01", ZONE).toDate();
   return dayjs.tz(d, ZONE).toDate();
 };
 const toYMD = (d) => {
-  // dayjs 객체를 입력받아 'YYYY-MM-DD' 형식으로 변환
   return d instanceof Date
     ? dayjs(d).tz(ZONE).format("YYYY-MM-DD")
     : dayjs.tz(d, ZONE).format("YYYY-MM-DD");
@@ -66,64 +67,9 @@ const dayDiff = (d1, d2) => {
   return dayjs.tz(d2, ZONE).diff(dayjs.tz(d1, ZONE), "day");
 };
 
-const triggerPreview = debounce(async () => {
-  if (!state.selectedStudent) return;
-  const allItems = [];
-  if (!state.planSegments || state.planSegments.length === 0) {
-    $("#result").innerHTML = "플랜 구간이 없습니다. 새 플랜을 만들어주세요.";
-    return;
-  }
-  for (const segment of state.planSegments) {
-    if (
-      !segment.startDate ||
-      !segment.endDate ||
-      segment.startDate > segment.endDate
-    )
-      continue;
-    const defaultSchedule =
-      state.allClasses.find((c) => c.id === state.selectedStudent.class_id)
-        ?.schedule_days || "MON,WED,FRI";
-    const body = {
-      startDate: segment.startDate,
-      endDate: segment.endDate,
-      days: (segment.days || defaultSchedule).toUpperCase(),
-      lanes: segment.lanes,
-      userSkips: Object.entries(state.userSkips).map(([date, v]) => ({
-        date,
-        ...v,
-      })),
-      events: state.allEvents,
-      studentInfo: state.selectedStudent,
-    };
-    try {
-      const res = await api("/api/plan", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (res.ok) allItems.push(...res.items);
-    } catch (e) {
-      console.error("Preview failed for segment", segment.id, e);
-    }
-  }
-  const finalStartDate = state.planSegments[0]?.startDate;
-  const finalEndDate =
-    state.planSegments[state.planSegments.length - 1]?.endDate;
-  renderPrintable(
-    allItems.sort((a, b) => a.date.localeCompare(b.date)),
-    {
-      studentNames: [state.selectedStudent.name],
-      startDate: finalStartDate,
-      endDate: finalEndDate,
-    },
-    "#result"
-  );
-}, 500);
-
 async function updatePlanSegmentDetails() {
   if (!state.planSegments.length || !state.selectedStudent) return;
 
-  // 로딩 중임을 사용자에게 알립니다.
   $("#result").innerHTML = "플랜을 새로 계산하고 있습니다...";
 
   try {
@@ -131,16 +77,13 @@ async function updatePlanSegmentDetails() {
     const newEndDate = $("#endDate").value;
     const newDays = [...state.selectedDays].join(",") || "MON,WED,FRI";
 
-    // 서버에 보낼 재료들을 준비합니다.
     const allRegularBooks = {};
     const fixedExamSegments = [];
-
     state.planSegments.forEach((seg) => {
       if (seg.id.startsWith("seg_exam_") || seg.id.includes("_insertion")) {
-        fixedExamSegments.push(seg); // 내신 플랜 정보
+        fixedExamSegments.push(seg);
       } else {
         for (const lane in seg.lanes) {
-          // 일반 교재 정보
           if (!allRegularBooks[lane]) allRegularBooks[lane] = [];
           seg.lanes[lane].forEach((book) => {
             if (
@@ -155,25 +98,20 @@ async function updatePlanSegmentDetails() {
       }
     });
 
-    // 서버로 보낼 재료 꾸러미
     const body = {
       newStartDate,
       newEndDate,
       newDays,
       allRegularBooks,
       fixedExamSegments,
-      // [추가] userSkips 정보를 올바른 형식으로 변환하여 포함합니다.
       userSkips: Object.entries(state.userSkips).map(([date, v]) => ({
         date,
         ...v,
       })),
-      // [추가] events 정보를 포함합니다.
       events: state.allEvents,
-      // [추가] studentInfo 정보를 포함합니다.
       studentInfo: state.selectedStudent,
     };
 
-    // 서버에 "이 재료들로 계획표를 완전히 새로 만들어주세요!" 라고 요청합니다.
     const res = await api("/api/rebuild-plan", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -183,23 +121,69 @@ async function updatePlanSegmentDetails() {
     if (!res.ok)
       throw new Error(res.error || "서버에서 계획 재구성에 실패했습니다.");
 
-    // 서버가 만들어준 완벽한 새 계획표로 교체합니다.
     state.planSegments = res.newPlanSegments;
 
-    // 새 계획표를 화면에 렌더링하고 미리보기를 실행합니다.
     renderAllLanes();
     document.dispatchEvent(new Event("renderLanesComplete"));
-    triggerPreview();
+
+    const allItems = [];
+    if (!state.planSegments || state.planSegments.length === 0) {
+      $("#result").innerHTML = "플랜 구간이 없습니다. 새 플랜을 만들어주세요.";
+      return;
+    }
+    for (const segment of state.planSegments) {
+      if (
+        !segment.startDate ||
+        !segment.endDate ||
+        segment.startDate > segment.endDate
+      )
+        continue;
+      const defaultSchedule =
+        state.allClasses.find((c) => c.id === state.selectedStudent.class_id)
+          ?.schedule_days || "MON,WED,FRI";
+      const previewBody = {
+        startDate: segment.startDate,
+        endDate: segment.endDate,
+        days: (segment.days || defaultSchedule).toUpperCase(),
+        lanes: segment.lanes,
+        userSkips: Object.entries(state.userSkips).map(([date, v]) => ({
+          date,
+          ...v,
+        })),
+        events: state.allEvents,
+        studentInfo: state.selectedStudent,
+      };
+      try {
+        const planRes = await api("/api/plan", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(previewBody),
+        });
+        if (planRes.ok) allItems.push(...planRes.items);
+      } catch (e) {
+        console.error("Preview failed for segment", segment.id, e);
+      }
+    }
+    const finalStartDate = state.planSegments[0]?.startDate;
+    const finalEndDate =
+      state.planSegments[state.planSegments.length - 1]?.endDate;
+    renderPrintable(
+      allItems.sort((a, b) => a.date.localeCompare(b.date)),
+      {
+        studentNames: [state.selectedStudent.name],
+        startDate: finalStartDate,
+        endDate: finalEndDate,
+      },
+      "#result"
+    );
   } catch (e) {
     alert(`플랜 업데이트 실패: ${e.message}`);
-    // 필요하다면 여기에 에러 발생 시 원래 상태로 되돌리는 로직을 추가할 수 있습니다.
   }
 }
 
 document.addEventListener("DOMContentLoaded", boot);
 
 async function boot() {
-  // dayjs 플러그인 활성화
   if (window.dayjs_plugin_utc && window.dayjs_plugin_timezone) {
     dayjs.extend(window.dayjs_plugin_utc);
     dayjs.extend(window.dayjs_plugin_timezone);
@@ -261,8 +245,8 @@ function attachEventListeners() {
   $("#btnSave").onclick = savePlan;
   $("#btnPrint").onclick = prepareAndPrint;
   $("#btnInsertMode").onclick = toggleInsertionMode;
-  $("#startDate").onchange = updatePlanSegmentDetails;
-  $("#endDate").onchange = updatePlanSegmentDetails;
+  $("#startDate").onchange = debouncedUpdatePlan;
+  $("#endDate").onchange = debouncedUpdatePlan;
   $("#btnPrevMonth").onclick = () => {
     state.currentEventMonth.setMonth(state.currentEventMonth.getMonth() - 1);
     renderEvents();
@@ -282,7 +266,7 @@ function attachEventListeners() {
         state.selectedDays.add(day);
       }
       renderDaySelector();
-      updatePlanSegmentDetails();
+      debouncedUpdatePlan();
     };
   });
 
@@ -404,7 +388,7 @@ async function addEventOrSup(type) {
     if (scope !== "all" && inputs.length > 0) {
       inputs.forEach((input) => (input.value = ""));
     }
-    triggerPreview();
+    debouncedUpdatePlan();
   } catch (e) {
     alert(`추가 실패: ${e.message}`);
   }
@@ -416,7 +400,7 @@ async function deleteEvent(eventId) {
     await api(`/api/events?eventId=${eventId}`, { method: "DELETE" });
     state.allEvents = state.allEvents.filter((e) => e.id !== eventId);
     renderEvents();
-    triggerPreview();
+    debouncedUpdatePlan();
   } catch (e) {
     alert(`삭제 실패: ${e.message}`);
   }
@@ -642,7 +626,7 @@ function showPlanEditorForNewPlan() {
   $("#planActions").style.display = "none";
   $("#planEditor").style.display = "block";
   $("#btnSave").textContent = "새 플랜 저장하기";
-  triggerPreview();
+  debouncedUpdatePlan();
 }
 
 function clearPlanEditor() {
@@ -777,7 +761,7 @@ function onUnitChange(e) {
       }
     }
   }
-  triggerPreview();
+  debouncedUpdatePlan();
 }
 
 window.removeFromLane = (instanceId) => {
@@ -792,7 +776,7 @@ window.removeFromLane = (instanceId) => {
   mergeAdjacentSegments();
   renderAllLanes();
   document.dispatchEvent(new Event("renderLanesComplete"));
-  triggerPreview();
+  debouncedUpdatePlan();
 };
 
 function mergeAdjacentSegments() {
@@ -1030,7 +1014,7 @@ async function toggleInsertionMode() {
       $("#planEditor").scrollIntoView({ behavior: "smooth" });
       renderAllLanes();
       document.dispatchEvent(new Event("renderLanesComplete"));
-      triggerPreview();
+      debouncedUpdatePlan(); // Use the debounced update
     } catch (e) {
       alert(`기간 삽입 준비 실패: ${e.message}`);
     }
@@ -1094,7 +1078,7 @@ async function addBookToSegment(segmentId) {
     });
     renderAllLanes();
     document.dispatchEvent(new Event("renderLanesComplete"));
-    triggerPreview();
+    debouncedUpdatePlan();
   } catch (e) {
     alert(`교재 추가 실패: ${e.message}`);
   }
@@ -1287,9 +1271,8 @@ async function loadPlanForEditing(planId) {
   $("#planActions").style.display = "none";
   $("#planEditor").style.display = "block";
   $("#btnSave").textContent = "수정 내용 저장";
-  triggerPreview();
+  debouncedUpdatePlan();
 }
-
 window.loadPlanForEditing = loadPlanForEditing;
 
 function attachModalEventListeners() {
@@ -1327,14 +1310,14 @@ function saveSkip(type) {
     reason: type === "other" ? reason : type === "vacation" ? "휴가" : "질병",
   };
   closeSkipModal();
-  triggerPreview();
+  debouncedUpdatePlan();
 }
 
 function deleteSkip() {
   const date = $("#skipModal").dataset.date;
   delete state.userSkips[date];
   closeSkipModal();
-  triggerPreview();
+  debouncedUpdatePlan();
 }
 
 function renderPrintable(items, ctx, targetSelector) {
@@ -1807,13 +1790,11 @@ function renderAllExamLanes() {
   $("#examLaneMain2").innerHTML = laneContents.main2;
   $("#examLaneVocab").innerHTML = laneContents.vocab;
 
-  // 이벤트 리스너를 추가하여 진도 변경을 감지합니다.
   $$("#examPlanEditor select[data-instance-id]").forEach(
     (s) => (s.onchange = onExamUnitChange)
   );
 }
 
-// [신규] 내신 플랜의 진도 변경을 처리할 이벤트 핸들러를 추가합니다.
 function onExamUnitChange(e) {
   const { type, lane, instanceId } = e.target.dataset;
   const newValue = e.target.value;
@@ -1829,24 +1810,6 @@ function onExamUnitChange(e) {
     }
   }
   triggerExamPreview();
-}
-
-function renderExamLane(lane) {
-  const box = $(`#examLane${lane.charAt(0).toUpperCase() + lane.slice(1)}`);
-  const arr = state.examPlanLanes[lane];
-  if (!arr.length) {
-    box.innerHTML = `<div class="small muted">교재를 추가하세요.</div>`;
-    return;
-  }
-  box.innerHTML = arr
-    .map(
-      (b) => `
-      <div class="book-card">
-          <b>${b.title}</b>
-          <button class="btn-xs btn-danger" style="float: right;" onclick="removeBookFromExamLane('${lane}','${b.instanceId}')">삭제</button>
-      </div>`
-    )
-    .join("");
 }
 
 async function addBookToExamLane() {
@@ -1869,7 +1832,6 @@ async function addBookToExamLane() {
       return alert("해당 교재의 차시 정보가 없습니다.");
 
     state.examPlanLanes[lane].push({
-      // 각 교재는 고유한 instanceId를 가지므로 여러 번 추가해도 구별됩니다.
       instanceId: `inst_exam_${Date.now()}_${Math.random()}`,
       materialId,
       title,
@@ -2015,7 +1977,7 @@ async function saveExamPlan() {
       alert("내신 플랜이 성공적으로 저장되고, 대상 학생들에게 적용되었습니다.");
     }
 
-    triggerPreview();
+    if (state.selectedStudent) debouncedUpdatePlan();
 
     state.editingExamPlanId = null;
     $("#examPlanEditor").style.display = "none";
@@ -2043,7 +2005,7 @@ window.deleteExamPlan = async (examPlanId, school, grade) => {
     );
     alert("내신 플랜이 삭제되었습니다.");
 
-    triggerPreview();
+    if (state.selectedStudent) debouncedUpdatePlan();
 
     onExamSchoolOrGradeChange();
   } catch (e) {
