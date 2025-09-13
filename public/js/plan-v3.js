@@ -1849,14 +1849,6 @@ async function addBookToExamLane() {
     state.allMaterials.find((m) => m.material_id === materialId)?.title ||
     materialId;
 
-  if (
-    Object.values(state.examPlanLanes)
-      .flat()
-      .some((b) => b.materialId === materialId)
-  ) {
-    return alert("이미 추가된 교재입니다.");
-  }
-
   try {
     const isVocab = lane === "vocab";
     const units = await api(
@@ -1868,12 +1860,13 @@ async function addBookToExamLane() {
       return alert("해당 교재의 차시 정보가 없습니다.");
 
     state.examPlanLanes[lane].push({
-      instanceId: `inst_exam_${Date.now()}`,
+      // 각 교재는 고유한 instanceId를 가지므로 여러 번 추가해도 구별됩니다.
+      instanceId: `inst_exam_${Date.now()}_${Math.random()}`,
       materialId,
       title,
-      units, // 차시 정보 추가
-      startUnitCode: units[0].unit_code, // 기본값 설정
-      endUnitCode: units[units.length - 1].unit_code, // 기본값 설정
+      units,
+      startUnitCode: units[0].unit_code,
+      endUnitCode: units[units.length - 1].unit_code,
     });
     renderAllExamLanes();
     triggerExamPreview();
