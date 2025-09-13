@@ -1737,9 +1737,89 @@ function renderExamMaterialOptions() {
 }
 
 function renderAllExamLanes() {
-  renderExamLane("main1");
-  renderExamLane("main2");
-  renderExamLane("vocab");
+  const laneContents = {
+    main1: "<h5>메인 1</h5>",
+    main2: "<h5>메인 2</h5>",
+    vocab: "<h5>어휘</h5>",
+  };
+
+  for (const lane in state.examPlanLanes) {
+    for (const book of state.examPlanLanes[lane]) {
+      const generateOptionText = (unit) => {
+        if (lane === "vocab") {
+          const lecture = unit.lecture_range || "회차";
+          const vocab = unit.vocab_range || "범위";
+          return `${lecture} (${vocab})`;
+        }
+        return `${unit.lecture_range || unit.lecture || ""} — ${
+          unit.title || ""
+        }`;
+      };
+
+      const units = book.units || [];
+      const startOptions = units
+        .map(
+          (u) =>
+            `<option value="${u.unit_code}" ${
+              u.unit_code === book.startUnitCode ? "selected" : ""
+            }>${generateOptionText(u)}</option>`
+        )
+        .join("");
+
+      const endOptions = units
+        .map(
+          (u) =>
+            `<option value="${u.unit_code}" ${
+              u.unit_code === book.endUnitCode ? "selected" : ""
+            }>${generateOptionText(u)}</option>`
+        )
+        .join("");
+
+      const cardHTML = `
+        <div class="book-card">
+            <b>${book.title}</b>
+            <div class="row mt">
+              <div style="flex:1">
+                <label class="small">시작 차시</label>
+                <select data-type="start" data-lane="${lane}" data-instance-id="${book.instanceId}">${startOptions}</select>
+              </div>
+              <div style="flex:1">
+                <label class="small">종료 차시</label>
+                <select data-type="end" data-lane="${lane}" data-instance-id="${book.instanceId}">${endOptions}</select>
+              </div>
+            </div>
+            <button class="btn-xs" style="background:#ef4444; width:auto; margin-top:8px;" onclick="removeBookFromExamLane('${lane}', '${book.instanceId}')">삭제</button>
+        </div>`;
+      laneContents[lane] += cardHTML;
+    }
+  }
+
+  $("#examLaneMain1").innerHTML = laneContents.main1;
+  $("#examLaneMain2").innerHTML = laneContents.main2;
+  $("#examLaneVocab").innerHTML = laneContents.vocab;
+
+  // 이벤트 리스너를 추가하여 진도 변경을 감지합니다.
+  $$("#examPlanEditor select[data-instance-id]").forEach(
+    (s) => (s.onchange = onExamUnitChange)
+  );
+}
+
+// [신규] 내신 플랜의 진도 변경을 처리할 이벤트 핸들러를 추가합니다.
+function onExamUnitChange(e) {
+  const { type, lane, instanceId } = e.target.dataset;
+  const newValue = e.target.value;
+
+  const book = state.examPlanLanes[lane]?.find(
+    (b) => b.instanceId === instanceId
+  );
+  if (book) {
+    if (type === "start") {
+      book.startUnitCode = newValue;
+    } else {
+      book.endUnitCode = newValue;
+    }
+  }
+  triggerExamPreview();
 }
 
 function renderExamLane(lane) {
@@ -1777,13 +1857,29 @@ async function addBookToExamLane() {
     return alert("이미 추가된 교재입니다.");
   }
 
-  state.examPlanLanes[lane].push({
-    instanceId: `inst_exam_${Date.now()}`,
-    materialId,
-    title,
-  });
-  renderAllExamLanes();
-  triggerExamPreview();
+  try {
+    const isVocab = lane === "vocab";
+    const units = await api(
+      isVocab
+        ? `/api/vocaBook?materialId=${materialId}`
+        : `/api/mainBook?materialId=${materialId}`
+    );
+    if (!Array.isArray(units) || !units.length)
+      return alert("해당 교재의 차시 정보가 없습니다.");
+
+    state.examPlanLanes[lane].push({
+      instanceId: `inst_exam_${Date.now()}`,
+      materialId,
+      title,
+      units, // 차시 정보 추가
+      startUnitCode: units[0].unit_code, // 기본값 설정
+      endUnitCode: units[units.length - 1].unit_code, // 기본값 설정
+    });
+    renderAllExamLanes();
+    triggerExamPreview();
+  } catch (e) {
+    alert(`교재 추가 실패: ${e.message}`);
+  }
 }
 
 window.removeBookFromExamLane = (lane, instanceId) => {
@@ -1828,23 +1924,14 @@ const triggerExamPreview = debounce(async () => {
     return;
   }
 
-  const lanes = {
-    main1: state.examPlanLanes.main1.map((b) => ({
+  const lanes = {};
+  for (const lane in state.examPlanLanes) {
+    lanes[lane] = state.examPlanLanes[lane].map((b) => ({
       materialId: b.materialId,
-      startUnitCode: null,
-      endUnitCode: null,
-    })),
-    main2: state.examPlanLanes.main2.map((b) => ({
-      materialId: b.materialId,
-      startUnitCode: null,
-      endUnitCode: null,
-    })),
-    vocab: state.examPlanLanes.vocab.map((b) => ({
-      materialId: b.materialId,
-      startUnitCode: null,
-      endUnitCode: null,
-    })),
-  };
+      startUnitCode: b.startUnitCode,
+      endUnitCode: b.endUnitCode,
+    }));
+  }
 
   const body = {
     startDate,
