@@ -1391,13 +1391,6 @@ function renderPrintable(items, ctx, targetSelector) {
 
   const rows = dates
     .map((d, index) => {
-      // 첫 날은 항상 교재 정보를 표시하기 위해 이전 ID를 null과 다른 값으로 초기화합니다.
-      if (index === 0) {
-        prevM1Id = `init_${Date.now()}`;
-        prevM2Id = `init_${Date.now()}`;
-        prevVId = `init_${Date.now()}`;
-      }
-
       const dayItems = items.filter((x) => x.date === d);
       const skip = dayItems.find((x) => x.source === "skip");
       const DOW_KR = ["일", "월", "화", "수", "목", "금", "토"];
@@ -1423,9 +1416,7 @@ function renderPrintable(items, ctx, targetSelector) {
 
       let newBookMessages = [];
 
-      // ▼▼▼ [핵심 수정] OT 여부와 관계 없이 새 교재면 무조건 표시하도록 변경 ▼▼▼
       const checkNewBook = (item, itemId, prevItemId, laneName) => {
-        // item.isOT 조건을 제거했습니다.
         if (item && itemId !== prevItemId) {
           const book = state.allMaterials.find((m) => m.material_id === itemId);
           if (book) {
@@ -1451,11 +1442,6 @@ function renderPrintable(items, ctx, targetSelector) {
           </tr>
         `;
       }
-      // ▲▲▲ [핵심 수정] 여기까지 ▲▲▲
-
-      prevM1Id = m1Id;
-      prevM2Id = m2Id;
-      prevVId = vId;
 
       let specialPeriodClass = "";
       if (isExamPreview) {
@@ -1472,58 +1458,67 @@ function renderPrintable(items, ctx, targetSelector) {
         }
       }
 
+      let regularRowHtml = "";
       if (skip) {
-        const regularRowHtml = `<tr class="${specialPeriodClass}" ${tag}><td class="date-column section-divider">${dateString}</td><td colspan="12" style="color:#64748b;background:#f8fafc;">${skip.reason}</td></tr>`;
-        return newBookInfoRow + regularRowHtml;
-      }
-
-      const renderMainLane = (mainItem) => {
-        if (!mainItem) return `<td></td>`.repeat(5);
-        const title =
-          state.allMaterials.find((m) => m.material_id === mainItem.material_id)
-            ?.title || mainItem.material_id;
-        if (mainItem.isOT)
-          return `<td colspan="5" style="background: #F9FF00; font-weight: bold;">"${title}" OT</td>`;
-
-        return `<td><span class="lecture-text">${
-          mainItem.lecture_range || ""
-        }</span></td><td>${
-          mainItem.pages ? `p.${mainItem.pages}` : ""
-        }</td><td>${mainItem.wb ? `p.${mainItem.wb}` : ""}</td><td>${
-          mainItem.dt_vocab || ""
-        }</td><td>${mainItem.key_sents || ""}</td>`;
-      };
-
-      const renderVocabLane = (vocabItem) => {
-        if (!vocabItem) return `<td></td><td></td>`;
-        if (vocabItem.isOT) {
+        regularRowHtml = `<tr class="${specialPeriodClass}" ${tag}><td class="date-column section-divider">${dateString}</td><td colspan="12" style="color:#64748b;background:#f8fafc;">${skip.reason}</td></tr>`;
+      } else {
+        const renderMainLane = (mainItem) => {
+          if (!mainItem) return `<td></td>`.repeat(5);
           const title =
             state.allMaterials.find(
-              (m) => m.material_id === vocabItem.material_id
-            )?.title || vocabItem.material_id;
-          return `<td colspan="2" style="background: #F9FF00; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${title}">${title}</td>`;
-        }
-        return `<td>${vocabItem.lecture_range || ""}</td><td>${
-          vocabItem.vocab_range || ""
-        }</td>`;
-      };
+              (m) => m.material_id === mainItem.material_id
+            )?.title || mainItem.material_id;
+          if (mainItem.isOT)
+            return `<td colspan="5" style="background: #F9FF00; font-weight: bold;">"${title}" OT</td>`;
 
-      const m1Html = renderMainLane(m1).replace(
-        /(<\/td>\s*){5}$/,
-        "</td>".repeat(4) + '<td class="section-divider">'
-      );
-      const m2Html = renderMainLane(m2).replace(
-        /(<\/td>\s*){5}$/,
-        "</td>".repeat(4) + '<td class="section-divider">'
-      );
-      const vHtml = renderVocabLane(v);
+          return `<td><span class="lecture-text">${
+            mainItem.lecture_range || ""
+          }</span></td><td>${
+            mainItem.pages ? `p.${mainItem.pages}` : ""
+          }</td><td>${mainItem.wb ? `p.${mainItem.wb}` : ""}</td><td>${
+            mainItem.dt_vocab || ""
+          }</td><td>${mainItem.key_sents || ""}</td>`;
+        };
 
-      const regularRowHtml = `<tr class="${specialPeriodClass}" ${tag}>
-                <td class="date-column section-divider">${dateString}</td>
-                ${m1Html}
-                ${m2Html}
-                ${vHtml}
-              </tr>`;
+        const renderVocabLane = (vocabItem) => {
+          if (!vocabItem) return `<td></td><td></td>`;
+          if (vocabItem.isOT) {
+            const title =
+              state.allMaterials.find(
+                (m) => m.material_id === vocabItem.material_id
+              )?.title || vocabItem.material_id;
+            return `<td colspan="2" style="background: #F9FF00; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${title}">${title}</td>`;
+          }
+          return `<td>${vocabItem.lecture_range || ""}</td><td>${
+            vocabItem.vocab_range || ""
+          }</td>`;
+        };
+
+        const m1Html = renderMainLane(m1).replace(
+          /(<\/td>\s*){5}$/,
+          "</td>".repeat(4) + '<td class="section-divider">'
+        );
+        const m2Html = renderMainLane(m2).replace(
+          /(<\/td>\s*){5}$/,
+          "</td>".repeat(4) + '<td class="section-divider">'
+        );
+        const vHtml = renderVocabLane(v);
+
+        regularRowHtml = `<tr class="${specialPeriodClass}" ${tag}>
+                  <td class="date-column section-divider">${dateString}</td>
+                  ${m1Html}
+                  ${m2Html}
+                  ${vHtml}
+                </tr>`;
+      }
+
+      // ▼▼▼ [핵심 수정] 실제 수업이 있는 날에만 이전 교재 ID를 업데이트합니다. ▼▼▼
+      if (!skip) {
+        prevM1Id = m1Id;
+        prevM2Id = m2Id;
+        prevVId = vId;
+      }
+      // ▲▲▲ [핵심 수정] 여기까지 ▲▲▲
 
       return newBookInfoRow + regularRowHtml;
     })
