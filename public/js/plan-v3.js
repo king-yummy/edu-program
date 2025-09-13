@@ -162,6 +162,15 @@ async function updatePlanSegmentDetails() {
       newDays,
       allRegularBooks,
       fixedExamSegments,
+      // [추가] userSkips 정보를 올바른 형식으로 변환하여 포함합니다.
+      userSkips: Object.entries(state.userSkips).map(([date, v]) => ({
+        date,
+        ...v,
+      })),
+      // [추가] events 정보를 포함합니다.
+      events: state.allEvents,
+      // [추가] studentInfo 정보를 포함합니다.
+      studentInfo: state.selectedStudent,
     };
 
     // 서버에 "이 재료들로 계획표를 완전히 새로 만들어주세요!" 라고 요청합니다.
