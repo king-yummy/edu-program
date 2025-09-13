@@ -286,8 +286,8 @@ export default async function handler(req, res) {
       }
 
       const newExamSegment = {
-        ...planData,
-        id: `seg_exam_${examRecordId}`, // 외부에서 생성된 ID를 일관되게 사용
+        ...planData, // startDate, endDate, title 등 나머지 정보 포함
+        id: `seg_exam_${examRecordId}`,
         days: studentScheduleDays,
       };
       const newExamStartUtc = toUtcDate(newExamSegment.startDate);
